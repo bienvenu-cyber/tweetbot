@@ -15,25 +15,6 @@ function percentEncode(str: string): string {
     .replace(/\)/g, '%29');
 }
 
-function generateOAuthSignature(
-  method: string,
-  url: string,
-  params: Record<string, string>,
-  consumerSecret: string,
-  tokenSecret: string
-): string {
-  const sortedKeys = Object.keys(params).sort();
-  const paramString = sortedKeys.map(k => `${percentEncode(k)}=${percentEncode(params[k])}`).join('&');
-  const signatureBase = `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(paramString)}`;
-  const signingKey = `${percentEncode(consumerSecret)}&${percentEncode(tokenSecret)}`;
-  
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(signingKey);
-  const messageData = encoder.encode(signatureBase);
-  
-  // Use Web Crypto API for HMAC-SHA1
-  return "";  // placeholder, we'll use a different approach
-}
 
 async function generateOAuthHeader(
   method: string,
