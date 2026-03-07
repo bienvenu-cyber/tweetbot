@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      scheduled_tweets: {
+        Row: {
+          content: string
+          created_at: string
+          error_message: string | null
+          id: string
+          reply_to_tweet_id: string | null
+          scheduled_at: string | null
+          status: string
+          tweet_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          reply_to_tweet_id?: string | null
+          scheduled_at?: string | null
+          status?: string
+          tweet_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          reply_to_tweet_id?: string | null
+          scheduled_at?: string | null
+          status?: string
+          tweet_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
