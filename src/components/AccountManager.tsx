@@ -19,6 +19,7 @@ interface Account {
 }
 
 const AccountManager = () => {
+  const MAX_ACCOUNTS = 20;
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
