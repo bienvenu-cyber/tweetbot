@@ -1,1 +1,7 @@
 project_id = "tbgtgbsjkzdvummjxssy"
+
+[functions.generate-content]
+verify_jwt = false
+
+[functions.auto-publish]
+verify_jwt = false
