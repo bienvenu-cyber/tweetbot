@@ -101,11 +101,20 @@ serve(async (req) => {
       });
     }
 
-    // Process each active account
+    // Process each active account with round-robin rotation
+    // Sort by least recently posted to ensure fair distribution
+    const sortedAccounts = [...accounts].sort((a, b) => {
+      const aDate = a.updated_at || a.created_at;
+      const bDate = b.updated_at || b.created_at;
+      return new Date(aDate).getTime() - new Date(bDate).getTime();
+    });
+
     const results = [];
-    for (const account of accounts) {
+    for (const account of sortedAccounts) {
       try {
         const result = await processAccount(supabase, account, LOVABLE_API_KEY);
+        // Touch updated_at to track rotation order
+        await supabase.from('twitter_accounts').update({ updated_at: new Date().toISOString() }).eq('id', account.id);
         results.push({ account: account.name, ...result });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
