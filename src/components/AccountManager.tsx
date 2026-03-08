@@ -87,10 +87,18 @@ const AccountManager = () => {
         <h2 className="text-lg font-semibold font-display gradient-text flex items-center gap-2">
           <Users className="w-5 h-5" /> Multi-Comptes
         </h2>
-        <Button size="sm" onClick={() => setShowForm(!showForm)} variant="secondary">
-          <Plus className="w-4 h-4 mr-1" />
-          Ajouter
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{accounts.length}/{MAX_ACCOUNTS}</span>
+          <Button
+            size="sm"
+            onClick={() => setShowForm(!showForm)}
+            variant="secondary"
+            disabled={accounts.length >= MAX_ACCOUNTS}
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Ajouter
+          </Button>
+        </div>
       </div>
 
       {showForm && (
