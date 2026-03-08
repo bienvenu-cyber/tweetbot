@@ -14,8 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      content_generation_log: {
+        Row: {
+          account_id: string | null
+          ai_optimized_prompt: string | null
+          category: string | null
+          created_at: string
+          generated_content: string
+          hashtags: string[] | null
+          id: string
+          prompt: string | null
+          published_at: string | null
+          status: string
+          tweet_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          ai_optimized_prompt?: string | null
+          category?: string | null
+          created_at?: string
+          generated_content: string
+          hashtags?: string[] | null
+          id?: string
+          prompt?: string | null
+          published_at?: string | null
+          status?: string
+          tweet_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          ai_optimized_prompt?: string | null
+          category?: string | null
+          created_at?: string
+          generated_content?: string
+          hashtags?: string[] | null
+          id?: string
+          prompt?: string | null
+          published_at?: string | null
+          status?: string
+          tweet_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_generation_log_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "twitter_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_tweets: {
         Row: {
+          account_id: string | null
+          category: string | null
           content: string
           created_at: string
           error_message: string | null
@@ -27,6 +79,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_id?: string | null
+          category?: string | null
           content: string
           created_at?: string
           error_message?: string | null
@@ -38,6 +92,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_id?: string | null
+          category?: string | null
           content?: string
           created_at?: string
           error_message?: string | null
@@ -47,6 +103,100 @@ export type Database = {
           status?: string
           tweet_id?: string | null
           updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_tweets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "twitter_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tweet_templates: {
+        Row: {
+          account_id: string | null
+          category: string
+          content: string
+          created_at: string
+          hashtags: string[] | null
+          id: string
+          is_active: boolean
+          last_used_at: string | null
+          updated_at: string
+          use_count: number
+        }
+        Insert: {
+          account_id?: string | null
+          category?: string
+          content: string
+          created_at?: string
+          hashtags?: string[] | null
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          updated_at?: string
+          use_count?: number
+        }
+        Update: {
+          account_id?: string | null
+          category?: string
+          content?: string
+          created_at?: string
+          hashtags?: string[] | null
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          updated_at?: string
+          use_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tweet_templates_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "twitter_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      twitter_accounts: {
+        Row: {
+          access_token: string
+          access_token_secret: string
+          consumer_key: string
+          consumer_secret: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          access_token: string
+          access_token_secret: string
+          consumer_key: string
+          consumer_secret: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          access_token?: string
+          access_token_secret?: string
+          consumer_key?: string
+          consumer_secret?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          username?: string | null
         }
         Relationships: []
       }
