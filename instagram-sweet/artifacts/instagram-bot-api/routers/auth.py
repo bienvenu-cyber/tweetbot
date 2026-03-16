@@ -65,11 +65,5 @@ def auth_status(username: Optional[str] = None):
     return account_manager.get_auth_status(username)
 
 
-@router.get("/accounts")
-def list_accounts():
-    return {"accounts": account_manager.list_accounts()}
-
-
-@router.delete("/accounts/{username}")
-def remove_account(username: str):
-    return account_manager.remove_account(username)
+## Note: Account listing has been moved to /bot-api/account/list
+## Account deletion has been moved to /bot-api/account/{username}
