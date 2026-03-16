@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("instagram_bot")
 
-from database import init_db, SessionLocal, BotSettingsModel
+from database import check_db, SessionLocal, BotSettingsModel
 from instagram_client import set_global_proxy, account_manager
 from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
