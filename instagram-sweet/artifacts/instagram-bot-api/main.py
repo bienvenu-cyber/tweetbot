@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("instagram_bot")
 
-from database import init_db, SessionLocal, BotSettingsModel
+from database import check_db, SessionLocal, BotSettingsModel
 from instagram_client import set_global_proxy, account_manager
 from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
@@ -36,10 +36,10 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     try:
-        init_db()
-        logger.info("[DB] Database initialized successfully")
+        check_db()
+        logger.info("[DB] Database connection verified")
     except Exception as e:
-        logger.error(f"[DB] Database initialization failed: {e}")
+        logger.error(f"[DB] Database connection failed: {e}")
 
     # Load proxy from DB
     try:
