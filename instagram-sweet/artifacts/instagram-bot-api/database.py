@@ -135,39 +135,9 @@ def get_db():
     finally:
         db.close()
 
-
-def init_db():
-    """Initialize database tables and seed defaults.
-    Uses CREATE TABLE IF NOT EXISTS via metadata.create_all,
-    then runs lightweight ALTER migrations for backward compat."""
-    from sqlalchemy import text, inspect
-
-    # Create all tables that don't exist yet
-    Base.metadata.create_all(bind=engine)
-
-    # Lightweight migrations for existing DBs missing new columns
-    migrations = [
-        "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500)",
-        "ALTER TABLE bot_logs ADD COLUMN IF NOT EXISTS account_username VARCHAR(100)",
-        "ALTER TABLE bot_bulk_jobs ADD COLUMN IF NOT EXISTS account_username VARCHAR(100)",
-    ]
+def check_db():
+    """Verify database connectivity. Tables are managed by Lovable Cloud migrations."""
+    from sqlalchemy import text
     with engine.connect() as connection:
-        for sql in migrations:
-            try:
-                connection.execute(text(sql))
-            except Exception:
-                pass
-        connection.commit()
-
-    # Seed default settings
-    db = SessionLocal()
-    try:
-        settings = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
-        if not settings:
-            db.add(BotSettingsModel(id=1))
-            db.commit()
-            logger.info("[DB] Default settings created")
-    finally:
-        db.close()
-
+        connection.execute(text("SELECT 1"))
     logger.info(f"[DB] Connected to: {DATABASE_URL[:40]}...")
