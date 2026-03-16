@@ -10,6 +10,7 @@ import { AccountSelector } from "@/components/account-selector";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const { data: account, isLoading: accountLoading } = useAccount();
   const { data: queueData } = useQueue();
   const { data: logsData } = useLogs({ limit: 10 });
