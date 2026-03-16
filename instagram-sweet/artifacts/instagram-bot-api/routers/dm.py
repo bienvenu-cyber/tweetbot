@@ -2,14 +2,15 @@ import asyncio
 import random
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
 
-from instagram_client import ig_manager
-from database import get_db, LogEntry, QueueItem, BotSettingsModel, BulkJob, SessionLocal
+from instagram_client import account_manager
+from database import get_db, LogEntry, BotSettingsModel, BulkJob, SessionLocal
 from utils import get_daily_count, log_action
+from routers.ws import broadcast_job_update
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,6 +19,7 @@ router = APIRouter()
 class SendDmRequest(BaseModel):
     username: str
     message: str
+    account_username: Optional[str] = None
 
 
 class BulkSendDmRequest(BaseModel):
@@ -25,11 +27,12 @@ class BulkSendDmRequest(BaseModel):
     message: str
     delay_min: int = 30
     delay_max: int = 120
+    account_username: Optional[str] = None
 
 
 @router.get("/threads")
-def get_threads(amount: int = Query(20)):
-    cl = ig_manager.get_client()
+def get_threads(amount: int = Query(20), account_username: Optional[str] = Query(None)):
+    cl = account_manager.get_client(account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
     try:
@@ -57,7 +60,7 @@ def get_threads(amount: int = Query(20)):
 
 @router.post("/send")
 def send_dm(req: SendDmRequest, db: Session = Depends(get_db)):
-    cl = ig_manager.get_client()
+    cl = account_manager.get_client(req.account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
 
@@ -79,10 +82,10 @@ def send_dm(req: SendDmRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int):
-    """Synchronous bulk sender run inside asyncio.to_thread for state tracking."""
+def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str]):
     import time
     db = SessionLocal()
+    loop = asyncio.new_event_loop()
     try:
         job = db.query(BulkJob).filter(BulkJob.id == job_id).first()
         if not job:
@@ -92,16 +95,16 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
         daily_limit = settings.dm_daily_limit if settings else 50
 
         for i, username in enumerate(usernames):
-            # Refresh job to check for cancellation
             db.refresh(job)
             if job.status == "cancelled":
                 break
 
-            cl = ig_manager.get_client()
+            cl = account_manager.get_client(account_username)
             if not cl:
                 job.status = "failed"
                 job.message = "Client disconnected"
                 db.commit()
+                _broadcast_sync(loop, job_id, job)
                 break
 
             daily_count = get_daily_count(db, "dm_send")
@@ -110,6 +113,7 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
                 job.status = "completed"
                 job.message = f"Stopped at daily limit ({daily_limit})"
                 db.commit()
+                _broadcast_sync(loop, job_id, job)
                 break
 
             try:
@@ -117,51 +121,65 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
                 cl.direct_send(message, user_ids=[user_id])
                 log_action(db, "dm_send", username, "success", f"Bulk DM sent: {message[:50]}")
                 job.succeeded += 1
-                logger.info(f"Bulk DM sent to {username} ({i+1}/{len(usernames)})")
             except Exception as e:
                 log_action(db, "dm_send", username, "error", str(e))
                 job.failed += 1
-                logger.error(f"Error sending bulk DM to {username}: {e}")
 
             job.processed += 1
             db.commit()
+            _broadcast_sync(loop, job_id, job)
 
             if i < len(usernames) - 1:
                 delay = random.randint(delay_min, delay_max)
-                logger.info(f"Waiting {delay}s before next DM...")
                 time.sleep(delay)
 
-        # Final status
         db.refresh(job)
         if job.status == "running":
             job.status = "completed"
         db.commit()
+        _broadcast_sync(loop, job_id, job)
     finally:
+        loop.close()
         db.close()
 
 
-async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int):
-    """Async wrapper using asyncio.to_thread for non-blocking execution."""
-    await asyncio.to_thread(_bulk_send_sync, job_id, usernames, message, delay_min, delay_max)
+def _broadcast_sync(loop, job_id, job):
+    """Send WS update from sync thread."""
+    try:
+        data = {
+            "job_id": job.id,
+            "status": job.status,
+            "total": job.total,
+            "processed": job.processed,
+            "succeeded": job.succeeded,
+            "failed": job.failed,
+            "message": job.message,
+        }
+        asyncio.run_coroutine_threadsafe(broadcast_job_update(job_id, data), asyncio.get_event_loop())
+    except Exception:
+        pass  # WS broadcast is best-effort
+
+
+async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str]):
+    await asyncio.to_thread(_bulk_send_sync, job_id, usernames, message, delay_min, delay_max, account_username)
 
 
 @router.post("/bulk-send")
 async def bulk_send_dm(req: BulkSendDmRequest, db: Session = Depends(get_db)):
-    cl = ig_manager.get_client()
+    cl = account_manager.get_client(req.account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
 
     if not req.usernames:
         raise HTTPException(status_code=400, detail="No usernames provided")
-
     if req.delay_min > req.delay_max:
         raise HTTPException(status_code=400, detail="delay_min must be <= delay_max")
 
-    # Create tracked job
     job = BulkJob(
         job_type="bulk_dm",
         status="running",
         total=len(req.usernames),
+        account_username=req.account_username,
     )
     db.add(job)
     db.commit()
@@ -170,20 +188,18 @@ async def bulk_send_dm(req: BulkSendDmRequest, db: Session = Depends(get_db)):
     log_action(db, "bulk_dm_start", f"{len(req.usernames)} users", "queued",
                f"Bulk DM job #{job.id} started for {len(req.usernames)} users")
 
-    # Launch as asyncio task instead of raw thread
-    asyncio.create_task(bulk_send_task(job.id, req.usernames, req.message, req.delay_min, req.delay_max))
+    asyncio.create_task(bulk_send_task(job.id, req.usernames, req.message, req.delay_min, req.delay_max, req.account_username))
 
     return {
         "success": True,
         "job_id": job.id,
         "queued": len(req.usernames),
-        "message": f"Bulk DM job #{job.id} started for {len(req.usernames)} users with {req.delay_min}-{req.delay_max}s delays",
+        "message": f"Bulk DM job #{job.id} started — connect to /bot-api/ws/bulk-jobs/{job.id} for live updates",
     }
 
 
 @router.get("/bulk-jobs")
 def get_bulk_jobs(db: Session = Depends(get_db)):
-    """Get status of all bulk jobs."""
     jobs = db.query(BulkJob).filter(BulkJob.job_type == "bulk_dm").order_by(BulkJob.created_at.desc()).limit(20).all()
     return {
         "jobs": [
@@ -195,6 +211,7 @@ def get_bulk_jobs(db: Session = Depends(get_db)):
                 "succeeded": j.succeeded,
                 "failed": j.failed,
                 "message": j.message,
+                "account_username": j.account_username,
                 "created_at": j.created_at.isoformat() if j.created_at else None,
             }
             for j in jobs
@@ -204,7 +221,6 @@ def get_bulk_jobs(db: Session = Depends(get_db)):
 
 @router.post("/bulk-jobs/{job_id}/cancel")
 def cancel_bulk_job(job_id: int, db: Session = Depends(get_db)):
-    """Cancel a running bulk job."""
     job = db.query(BulkJob).filter(BulkJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

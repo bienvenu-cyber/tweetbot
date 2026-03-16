@@ -1,14 +1,13 @@
 import os
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, JSON, event, text
-from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session, Mapped, mapped_column
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, Mapped, mapped_column
 from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger("instagram_bot")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is required")
 
@@ -20,6 +19,27 @@ class Base(DeclarativeBase):
     pass
 
 
+# ---------------------------------------------------------------------------
+# Bot accounts (multi-account support)
+# ---------------------------------------------------------------------------
+class BotAccount(Base):
+    __tablename__ = "bot_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    encrypted_password: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    session_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_logged_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_action_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+# ---------------------------------------------------------------------------
+# Queue, logs, settings
+# ---------------------------------------------------------------------------
 class QueueItem(Base):
     __tablename__ = "bot_queue"
 
@@ -41,6 +61,7 @@ class LogEntry(Base):
     target: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    account_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -60,31 +81,35 @@ class BotSettingsModel(Base):
     proxy_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, default=None)
 
 
-class InstagramSession(Base):
-    """Store Instagram sessions in DB instead of /tmp/ files."""
-    __tablename__ = "bot_sessions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    session_data: Mapped[str] = mapped_column(Text, nullable=False)  # JSON blob
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-
 class BulkJob(Base):
-    """Track bulk DM/comment jobs with state."""
     __tablename__ = "bot_bulk_jobs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    job_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "bulk_dm"
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running, completed, failed, cancelled
+    job_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="running")
     total: Mapped[int] = mapped_column(Integer, default=0)
     processed: Mapped[int] = mapped_column(Integer, default=0)
     succeeded: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    account_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ScheduledPost(Base):
+    """Posts scheduled for future publication."""
+    __tablename__ = "bot_scheduled_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_username: Mapped[str] = mapped_column(String(100), nullable=False)
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    caption: Mapped[str] = mapped_column(Text, nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, published, failed
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 def get_db():
@@ -95,23 +120,22 @@ def get_db():
         db.close()
 
 
-def _run_migrations(connection):
-    """Add new columns/tables to existing database without breaking existing data."""
+def init_db():
+    from sqlalchemy import text
+    Base.metadata.create_all(bind=engine)
+
+    # Run lightweight migrations for existing DBs
     migrations = [
         "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500)",
+        "ALTER TABLE bot_logs ADD COLUMN IF NOT EXISTS account_username VARCHAR(100)",
+        "ALTER TABLE bot_bulk_jobs ADD COLUMN IF NOT EXISTS account_username VARCHAR(100)",
     ]
-    for sql in migrations:
-        try:
-            connection.execute(text(sql))
-            logger.info(f"[DB] Migration OK: {sql[:60]}")
-        except Exception as e:
-            logger.warning(f"[DB] Migration skipped ({sql[:40]}...): {e}")
-
-
-def init_db():
-    Base.metadata.create_all(bind=engine)
     with engine.connect() as connection:
-        _run_migrations(connection)
+        for sql in migrations:
+            try:
+                connection.execute(text(sql))
+            except Exception:
+                pass
         connection.commit()
 
     db = SessionLocal()

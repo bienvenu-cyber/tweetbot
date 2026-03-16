@@ -1,8 +1,8 @@
 import logging
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, Dict
-from instagram_client import ig_manager
+from typing import Optional
+from instagram_client import account_manager
 
 logger = logging.getLogger("instagram_bot")
 router = APIRouter()
@@ -14,44 +14,34 @@ class LoginRequest(BaseModel):
 
 
 class ChallengeCodeRequest(BaseModel):
+    username: str
     code: str
 
 
 class CookieImportRequest(BaseModel):
-    # Paste the full cookie string from browser DevTools OR individual fields
-    cookie_string: Optional[str] = None  # e.g. "sessionid=abc; csrftoken=xyz; ds_user_id=123"
+    cookie_string: Optional[str] = None
     sessionid: Optional[str] = None
     csrftoken: Optional[str] = None
     ds_user_id: Optional[str] = None
     mid: Optional[str] = None
     ig_did: Optional[str] = None
     rur: Optional[str] = None
-    username: Optional[str] = None  # provide if known
+    username: Optional[str] = None
 
 
 @router.post("/login")
 def login(req: LoginRequest):
-    logger.info(f"[AUTH] Login endpoint called for '{req.username}'")
-    result = ig_manager.login(req.username, req.password)
-    logger.info(f"[AUTH] Login result: success={result.get('success')}, challenge={result.get('challenge', False)}")
-    return result
+    return account_manager.login(req.username, req.password)
 
 
 @router.post("/challenge")
 def submit_challenge(req: ChallengeCodeRequest):
-    logger.info(f"[AUTH] Challenge code submission")
-    return ig_manager.submit_challenge_code(req.code)
+    return account_manager.submit_challenge_code(req.username, req.code)
 
 
 @router.post("/import-cookies")
 def import_cookies(req: CookieImportRequest):
-    """
-    Import cookies from a browser session. 
-    The user logs in from their own device (trusted by Instagram),
-    then copies the cookies here. This bypasses geo-blocking completely.
-    """
-    logger.info(f"[AUTH] Cookie import request for username='{req.username}'")
-    return ig_manager.login_with_cookies(
+    return account_manager.login_with_cookies(
         cookie_string=req.cookie_string,
         sessionid=req.sessionid,
         csrftoken=req.csrftoken,
@@ -64,12 +54,22 @@ def import_cookies(req: CookieImportRequest):
 
 
 @router.post("/logout")
-def logout():
-    logger.info("[AUTH] Logout endpoint called")
-    ig_manager.logout()
-    return {"success": True, "message": "Déconnecté avec succès"}
+def logout(username: Optional[str] = None):
+    if username:
+        return account_manager.logout(username)
+    return account_manager.logout_all()
 
 
 @router.get("/status")
-def auth_status():
-    return ig_manager.get_auth_status()
+def auth_status(username: Optional[str] = None):
+    return account_manager.get_auth_status(username)
+
+
+@router.get("/accounts")
+def list_accounts():
+    return {"accounts": account_manager.list_accounts()}
+
+
+@router.delete("/accounts/{username}")
+def remove_account(username: str):
+    return account_manager.remove_account(username)
