@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "8v0ZfVcPFgy0vKEgKmE12"
+uri = "file://DEPLOYMENT.md"
+type = "text"
+title = "Guide de Déploiement — Railway / Render / VPS"

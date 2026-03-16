@@ -1,0 +1,16 @@
+packages:
+  "framer-motion": "For sleek page transitions and micro-interactions"
+  "recharts": "For dashboard analytics and data visualization"
+  "date-fns": "For beautiful timestamp formatting"
+  "@hookform/resolvers": "For Zod form validation"
+  "react-hook-form": "For robust form state management"
+  "lucide-react": "For beautiful iconography"
+
+images:
+  - path: "artifacts/dashboard/public/images/auth-bg.png"
+    description: "Abstract dark mode geometric mesh background with deep electric blue and purple neon light leaks, incredibly sleek and premium"
+    aspect_ratio: "16:9"
+
+notes:
+  - "The backend API is served at /bot-api/ (not /api/)"
+  - "Using custom fetch hooks to enforce the /bot-api/ prefix while using types from @workspace/api-client-react"

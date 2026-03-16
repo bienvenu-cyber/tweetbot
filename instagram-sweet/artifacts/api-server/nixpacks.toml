@@ -1,0 +1,15 @@
+[phases.setup]
+providers = ["node"]
+
+[phases.install]
+cmds = [
+  "corepack enable",
+  "corepack prepare pnpm@latest --activate",
+  "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = ["pnpm build"]
+
+[start]
+cmd = "node dist/index.cjs"

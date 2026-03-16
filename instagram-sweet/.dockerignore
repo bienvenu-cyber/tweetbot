@@ -1,0 +1,14 @@
+# Ne pas ignorer les dossiers nécessaires
+!artifacts/
+!lib/
+
+# Ignorer seulement ce qui n'est pas nécessaire
+node_modules/
+.git/
+.github/
+.local/
+dist/
+*.log
+.DS_Store
+.env
+.env.local

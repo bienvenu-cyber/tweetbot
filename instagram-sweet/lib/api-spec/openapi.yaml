@@ -1,0 +1,551 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Instagram Bot API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Instagram authentication
+  - name: account
+    description: Account information
+  - name: dm
+    description: Direct messages
+  - name: comments
+    description: Post comments
+  - name: posts
+    description: Instagram posts
+  - name: queue
+    description: Action queue
+  - name: logs
+    description: Activity logs
+  - name: settings
+    description: Bot settings
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login to Instagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout from Instagram
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+  /auth/status:
+    get:
+      operationId: getAuthStatus
+      tags: [auth]
+      summary: Check authentication status
+      responses:
+        "200":
+          description: Auth status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+  /account:
+    get:
+      operationId: getAccount
+      tags: [account]
+      summary: Get logged-in account info
+      responses:
+        "200":
+          description: Account info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountInfo"
+  /dm/threads:
+    get:
+      operationId: getDmThreads
+      tags: [dm]
+      summary: Get DM inbox threads
+      parameters:
+        - name: amount
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of threads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmThreadList"
+  /dm/send:
+    post:
+      operationId: sendDm
+      tags: [dm]
+      summary: Send a direct message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendDmRequest"
+      responses:
+        "200":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+  /dm/bulk-send:
+    post:
+      operationId: bulkSendDm
+      tags: [dm]
+      summary: Send DMs to multiple users with rate limiting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkSendDmRequest"
+      responses:
+        "200":
+          description: Bulk send queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkSendResponse"
+  /comments/post:
+    post:
+      operationId: postComment
+      tags: [comments]
+      summary: Comment on a post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostCommentRequest"
+      responses:
+        "200":
+          description: Comment posted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+  /posts/create:
+    post:
+      operationId: createPost
+      tags: [posts]
+      summary: Create an Instagram post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostRequest"
+      responses:
+        "200":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+  /queue:
+    get:
+      operationId: getQueue
+      tags: [queue]
+      summary: Get pending action queue
+      responses:
+        "200":
+          description: Queue items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueList"
+  /queue/{id}:
+    delete:
+      operationId: deleteQueueItem
+      tags: [queue]
+      summary: Delete a queue item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+  /logs:
+    get:
+      operationId: getLogs
+      tags: [logs]
+      summary: Get activity logs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: action_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogList"
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get bot settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSettings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update bot settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSettings"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSettings"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    StatusMessage:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        username:
+          type: string
+        requires_2fa:
+          type: boolean
+      required:
+        - success
+        - message
+    AuthStatus:
+      type: object
+      properties:
+        logged_in:
+          type: boolean
+        username:
+          type: string
+        full_name:
+          type: string
+        profile_pic_url:
+          type: string
+        followers:
+          type: integer
+        following:
+          type: integer
+      required:
+        - logged_in
+    AccountInfo:
+      type: object
+      properties:
+        username:
+          type: string
+        full_name:
+          type: string
+        biography:
+          type: string
+        profile_pic_url:
+          type: string
+        followers_count:
+          type: integer
+        following_count:
+          type: integer
+        media_count:
+          type: integer
+        is_private:
+          type: boolean
+      required:
+        - username
+    DmThread:
+      type: object
+      properties:
+        id:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+        last_message:
+          type: string
+        last_seen_at:
+          type: string
+        unread:
+          type: boolean
+      required:
+        - id
+        - users
+    DmThreadList:
+      type: object
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/DmThread"
+        total:
+          type: integer
+      required:
+        - threads
+        - total
+    SendDmRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        message:
+          type: string
+      required:
+        - username
+        - message
+    BulkSendDmRequest:
+      type: object
+      properties:
+        usernames:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+        delay_min:
+          type: integer
+          default: 30
+        delay_max:
+          type: integer
+          default: 120
+      required:
+        - usernames
+        - message
+    BulkSendResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        queued:
+          type: integer
+        message:
+          type: string
+      required:
+        - success
+        - queued
+        - message
+    PostCommentRequest:
+      type: object
+      properties:
+        post_url:
+          type: string
+        comment:
+          type: string
+      required:
+        - post_url
+        - comment
+    CreatePostRequest:
+      type: object
+      properties:
+        image_url:
+          type: string
+        caption:
+          type: string
+        schedule_at:
+          type: string
+          description: ISO 8601 datetime for scheduling (optional)
+      required:
+        - image_url
+        - caption
+    QueueItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        action_type:
+          type: string
+        target:
+          type: string
+        payload:
+          type: string
+        status:
+          type: string
+        scheduled_at:
+          type: string
+        created_at:
+          type: string
+      required:
+        - id
+        - action_type
+        - target
+        - status
+    QueueList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueueItem"
+        total:
+          type: integer
+      required:
+        - items
+        - total
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        action_type:
+          type: string
+        target:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        created_at:
+          type: string
+      required:
+        - id
+        - action_type
+        - status
+        - created_at
+    LogList:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogEntry"
+        total:
+          type: integer
+      required:
+        - logs
+        - total
+    BotSettings:
+      type: object
+      properties:
+        dm_daily_limit:
+          type: integer
+          default: 50
+        dm_delay_min:
+          type: integer
+          default: 30
+        dm_delay_max:
+          type: integer
+          default: 120
+        comment_daily_limit:
+          type: integer
+          default: 30
+        comment_delay_min:
+          type: integer
+          default: 20
+        comment_delay_max:
+          type: integer
+          default: 90
+        post_daily_limit:
+          type: integer
+          default: 3
+        auto_dm_enabled:
+          type: boolean
+          default: false
+        auto_comment_enabled:
+          type: boolean
+          default: false
+      required:
+        - dm_daily_limit
+        - dm_delay_min
+        - dm_delay_max
+        - comment_daily_limit
+        - comment_delay_min
+        - comment_delay_max
+        - post_daily_limit
+        - auto_dm_enabled
+        - auto_comment_enabled
