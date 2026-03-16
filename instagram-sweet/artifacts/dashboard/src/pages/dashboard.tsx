@@ -51,6 +51,9 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Multi-Account Selector */}
+      <AccountSelector selected={selectedAccount} onSelect={setSelectedAccount} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Account Info Card */}
         <Card className="col-span-1 border-border bg-card shadow-sm">
