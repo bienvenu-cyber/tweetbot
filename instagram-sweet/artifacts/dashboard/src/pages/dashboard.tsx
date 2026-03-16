@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Users, MessageCircle, Send, CheckCircle2, AlertCircle, Clock, Activity, Instagram } from "lucide-react";
 import { useAccount } from "@/hooks/use-auth";
@@ -5,6 +6,7 @@ import { useLogs } from "@/hooks/use-logs";
 import { useQueue } from "@/hooks/use-queue";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AccountSelector } from "@/components/account-selector";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
