@@ -2,7 +2,6 @@ import os
 import json
 import time
 import logging
-from pathlib import Path
 from typing import Optional
 from instagrapi import Client
 from instagrapi.exceptions import (
@@ -22,8 +21,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("instagram_bot")
 
-SESSION_FILE = Path("/tmp/instagram_session.json")
-
 _proxy_url: Optional[str] = None
 
 
@@ -38,7 +35,6 @@ def get_global_proxy() -> Optional[str]:
 
 
 def _parse_cookie_string(cookie_str: str) -> dict:
-    """Parse a browser cookie string like 'key=val; key2=val2' into a dict."""
     cookies = {}
     for part in cookie_str.split(";"):
         part = part.strip()
@@ -52,16 +48,14 @@ class InstagramClientManager:
     def __init__(self):
         self._client: Optional[Client] = None
         self._username: Optional[str] = None
-        self._password: Optional[str] = None
         self._logged_in: bool = False
         self._pending_challenge: bool = False
 
     def _create_client(self) -> Client:
         cl = Client()
         cl.delay_range = [1, 3]
-        # Simulate Benin locale to reduce geo-suspicion
         cl.set_locale("fr_BJ")
-        cl.set_timezone_offset(3600)  # UTC+1 (Benin)
+        cl.set_timezone_offset(3600)
         if _proxy_url:
             logger.info(f"[CLIENT] Setting proxy: {_proxy_url[:50]}...")
             cl.set_proxy(_proxy_url)
@@ -69,34 +63,64 @@ class InstagramClientManager:
             logger.info("[CLIENT] No proxy — direct connection (server IP: USA)")
         return cl
 
-    def _load_session(self, cl: Client, username: str) -> bool:
-        if not SESSION_FILE.exists():
-            return False
+    # ---- Session persistence via DB ----
+
+    def _load_session_from_db(self, cl: Client, username: str) -> bool:
         try:
-            with open(SESSION_FILE, "r") as f:
-                session_data = json.load(f)
-            stored_user = session_data.get("username", "").lower()
-            if stored_user == username.lower():
-                logger.info(f"[SESSION] Found saved session for {username}, restoring...")
+            from database import SessionLocal, InstagramSession
+            db = SessionLocal()
+            try:
+                row = db.query(InstagramSession).filter(
+                    InstagramSession.username == username.lower()
+                ).first()
+                if not row:
+                    return False
+                session_data = json.loads(row.session_data)
+                logger.info(f"[SESSION-DB] Found saved session for {username}")
                 cl.set_settings(session_data.get("settings", {}))
                 cl.login(username, "")
-                logger.info(f"[SESSION] Session restored OK for {username}")
+                logger.info(f"[SESSION-DB] Session restored OK for {username}")
                 return True
-            else:
-                logger.info(f"[SESSION] Session is for '{stored_user}', not '{username}', skipping")
+            finally:
+                db.close()
         except Exception as e:
-            logger.warning(f"[SESSION] Failed to load: {e}")
-            SESSION_FILE.unlink(missing_ok=True)
+            logger.warning(f"[SESSION-DB] Failed to load: {e}")
         return False
 
-    def _save_session(self, cl: Client, username: str):
+    def _save_session_to_db(self, cl: Client, username: str):
         try:
-            session_data = {"username": username, "settings": cl.get_settings()}
-            with open(SESSION_FILE, "w") as f:
-                json.dump(session_data, f)
-            logger.info(f"[SESSION] Saved session for {username}")
+            from database import SessionLocal, InstagramSession
+            db = SessionLocal()
+            try:
+                session_json = json.dumps({"username": username, "settings": cl.get_settings()}, default=str)
+                row = db.query(InstagramSession).filter(
+                    InstagramSession.username == username.lower()
+                ).first()
+                if row:
+                    row.session_data = session_json
+                else:
+                    db.add(InstagramSession(username=username.lower(), session_data=session_json))
+                db.commit()
+                logger.info(f"[SESSION-DB] Saved session for {username}")
+            finally:
+                db.close()
         except Exception as e:
-            logger.error(f"[SESSION] Failed to save: {e}")
+            logger.error(f"[SESSION-DB] Failed to save: {e}")
+
+    def _delete_session_from_db(self, username: Optional[str] = None):
+        try:
+            from database import SessionLocal, InstagramSession
+            db = SessionLocal()
+            try:
+                q = db.query(InstagramSession)
+                if username:
+                    q = q.filter(InstagramSession.username == username.lower())
+                q.delete()
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[SESSION-DB] Failed to delete: {e}")
 
     def login(self, username: str, password: str) -> dict:
         username = username.strip().lstrip("@").lower()
@@ -106,28 +130,27 @@ class InstagramClientManager:
         self._pending_challenge = False
         cl = self._create_client()
 
-        # Try restoring session first
-        if self._load_session(cl, username):
+        # Try restoring session from DB first
+        if self._load_session_from_db(cl, username):
             try:
                 cl.get_timeline_feed()
                 self._client = cl
                 self._username = username
-                self._password = password
                 self._logged_in = True
                 logger.info(f"[LOGIN] Session still valid for {username}")
                 return {"success": True, "message": "Session reprise avec succès", "username": username, "requires_2fa": False}
             except (LoginRequired, Exception) as e:
                 logger.warning(f"[LOGIN] Session expired: {e}, doing fresh login")
-                SESSION_FILE.unlink(missing_ok=True)
+                self._delete_session_from_db(username)
                 cl = self._create_client()
 
         logger.info(f"[LOGIN] Attempting fresh login for '{username}'")
         try:
             cl.login(username, password)
-            self._save_session(cl, username)
+            self._save_session_to_db(cl, username)
             self._client = cl
             self._username = username
-            self._password = password
+            # Password NOT stored — cleared after login
             self._logged_in = True
             self._pending_challenge = False
             logger.info(f"[LOGIN] SUCCESS for {username}")
@@ -145,7 +168,6 @@ class InstagramClientManager:
             logger.warning(f"[LOGIN] CHALLENGE REQUIRED — likely geo-block (server=USA, account=Benin)")
             self._client = cl
             self._username = username
-            self._password = password
             self._pending_challenge = True
 
             challenge_type = "approve"
@@ -189,13 +211,7 @@ class InstagramClientManager:
         rur: Optional[str] = None,
         username: Optional[str] = None,
     ) -> dict:
-        """
-        Log in by injecting cookies extracted from a trusted browser session.
-        This bypasses geo-blocking since the cookies were issued to the user's real device.
-        """
         logger.info("[COOKIE-LOGIN] Cookie import login attempt")
-
-        # Build cookie dict from either string or individual fields
         cookies: dict = {}
 
         if cookie_string:
@@ -216,10 +232,8 @@ class InstagramClientManager:
             return {"success": False, "message": "Le cookie 'sessionid' est requis. Copie-le depuis ton navigateur."}
 
         logger.info(f"[COOKIE-LOGIN] Got cookies: {list(cookies.keys())}")
-
         cl = self._create_client()
 
-        # Build minimal settings to inject cookies
         settings = cl.get_settings()
         settings["cookies"] = cookies
         if mid:
@@ -232,7 +246,6 @@ class InstagramClientManager:
 
         try:
             cl.set_settings(settings)
-            # Try to verify the session by fetching account info
             logger.info("[COOKIE-LOGIN] Settings injected, verifying session...")
             cl.login(username or cookies.get("ds_user_id", ""), "")
         except Exception as e:
@@ -241,7 +254,7 @@ class InstagramClientManager:
         try:
             user_info = cl.account_info()
             actual_username = user_info.username
-            self._save_session(cl, actual_username)
+            self._save_session_to_db(cl, actual_username)
             self._client = cl
             self._username = actual_username
             self._logged_in = True
@@ -266,7 +279,7 @@ class InstagramClientManager:
         logger.info(f"[CHALLENGE] Submitting code for {self._username}")
         try:
             self._client.challenge_resolve(self._client.last_json, code)
-            self._save_session(self._client, self._username)
+            self._save_session_to_db(self._client, self._username)
             self._logged_in = True
             self._pending_challenge = False
             logger.info(f"[CHALLENGE] Code accepted for {self._username}")
@@ -275,6 +288,21 @@ class InstagramClientManager:
             logger.error(f"[CHALLENGE] Code rejected: {e}")
             return {"success": False, "message": f"Code invalide ou expiré: {e}"}
 
+    def resume_session(self, username: str) -> dict:
+        """Resume a session from DB on startup."""
+        cl = self._create_client()
+        if self._load_session_from_db(cl, username):
+            try:
+                cl.get_timeline_feed()
+                self._client = cl
+                self._username = username
+                self._logged_in = True
+                return {"success": True, "message": f"Session restored for {username}"}
+            except Exception as e:
+                logger.warning(f"[RESUME] Session expired: {e}")
+                self._delete_session_from_db(username)
+        return {"success": False, "message": "No valid session found"}
+
     def logout(self):
         logger.info(f"[LOGOUT] Logging out {self._username}")
         if self._client:
@@ -282,10 +310,9 @@ class InstagramClientManager:
                 self._client.logout()
             except Exception as e:
                 logger.warning(f"[LOGOUT] Error: {e}")
-        SESSION_FILE.unlink(missing_ok=True)
+        self._delete_session_from_db(self._username)
         self._client = None
         self._username = None
-        self._password = None
         self._logged_in = False
         self._pending_challenge = False
         logger.info("[LOGOUT] Done")

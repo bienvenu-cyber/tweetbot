@@ -16,15 +16,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger("instagram_bot")
 
-from database import init_db, SessionLocal, BotSettingsModel
+from database import init_db, SessionLocal, BotSettingsModel, InstagramSession
 from instagram_client import set_global_proxy
+from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
+
+
+# ---------------------------------------------------------------------------
+# Allowed CORS origins — restrict to your dashboard domains
+# ---------------------------------------------------------------------------
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:3000"
+    ).split(",")
+    if o.strip()
+]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("Instagram Bot API v1.0 starting up...")
+    logger.info("Instagram Bot API v2.0 starting up...")
     logger.info("=" * 60)
     try:
         init_db()
@@ -45,23 +59,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[STARTUP] Failed to load proxy: {e}")
 
-    # Auto-restore Instagram session from saved file
+    # Auto-restore Instagram session from DB
     try:
-        from instagram_client import ig_manager, SESSION_FILE
-        import json as _json
-        if SESSION_FILE.exists():
-            with open(SESSION_FILE) as f:
-                saved = _json.load(f)
-            saved_username = saved.get("username", "")
-            if saved_username:
-                logger.info(f"[STARTUP] Found saved session for '{saved_username}', restoring...")
-                result = ig_manager.resume_session(saved_username)
-                if result.get("success"):
-                    logger.info(f"[STARTUP] ✓ Auto-resumed session for @{saved_username}")
-                else:
-                    logger.warning(f"[STARTUP] Session restore failed: {result.get('message')}")
+        from instagram_client import ig_manager
+        db = SessionLocal()
+        session = db.query(InstagramSession).first()
+        if session:
+            saved_username = session.username
+            logger.info(f"[STARTUP] Found saved session for '{saved_username}', restoring...")
+            result = ig_manager.resume_session(saved_username)
+            if result.get("success"):
+                logger.info(f"[STARTUP] ✓ Auto-resumed session for @{saved_username}")
+            else:
+                logger.warning(f"[STARTUP] Session restore failed: {result.get('message')}")
         else:
             logger.info("[STARTUP] No saved session found — user needs to log in")
+        db.close()
     except Exception as e:
         logger.error(f"[STARTUP] Auto-resume error: {e}")
 
@@ -69,15 +82,19 @@ async def lifespan(app: FastAPI):
     logger.info("Instagram Bot API shutting down...")
 
 
-app = FastAPI(title="Instagram Bot API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Instagram Bot API", version="2.0.0", lifespan=lifespan)
 
+# Restricted CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Auth middleware — protects all /bot-api/* endpoints
+app.add_middleware(AuthMiddleware)
 
 
 @app.middleware("http")
