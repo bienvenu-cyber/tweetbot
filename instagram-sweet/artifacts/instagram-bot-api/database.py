@@ -7,11 +7,27 @@ from typing import Optional
 
 logger = logging.getLogger("instagram_bot")
 
+# ---------------------------------------------------------------------------
+# Database connection
+# Supports both standard DATABASE_URL and Supabase-style connection strings.
+# For Lovable Cloud / Supabase, use the direct PostgreSQL connection string:
+#   postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres
+# ---------------------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable is required")
 
-engine = create_engine(DATABASE_URL)
+# Supabase sometimes provides pooler URLs with `postgresql://` scheme
+# SQLAlchemy needs `postgresql://` (not `postgres://`)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is required.\n"
+        "For Lovable Cloud (Supabase), use the direct connection string from your project settings:\n"
+        "  postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres"
+    )
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -28,7 +44,7 @@ class BotAccount(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     encrypted_password: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    session_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob
+    session_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_logged_in: Mapped[bool] = mapped_column(Boolean, default=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -121,10 +137,15 @@ def get_db():
 
 
 def init_db():
-    from sqlalchemy import text
+    """Initialize database tables and seed defaults.
+    Uses CREATE TABLE IF NOT EXISTS via metadata.create_all,
+    then runs lightweight ALTER migrations for backward compat."""
+    from sqlalchemy import text, inspect
+
+    # Create all tables that don't exist yet
     Base.metadata.create_all(bind=engine)
 
-    # Run lightweight migrations for existing DBs
+    # Lightweight migrations for existing DBs missing new columns
     migrations = [
         "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500)",
         "ALTER TABLE bot_logs ADD COLUMN IF NOT EXISTS account_username VARCHAR(100)",
@@ -138,6 +159,7 @@ def init_db():
                 pass
         connection.commit()
 
+    # Seed default settings
     db = SessionLocal()
     try:
         settings = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
@@ -147,3 +169,5 @@ def init_db():
             logger.info("[DB] Default settings created")
     finally:
         db.close()
+
+    logger.info(f"[DB] Connected to: {DATABASE_URL[:40]}...")
