@@ -13,6 +13,7 @@ import Login from "@/pages/login";
 import DmManager from "@/pages/dm-manager";
 import Comments from "@/pages/comments";
 import Posts from "@/pages/posts";
+import Schedule from "@/pages/schedule";
 import Queue from "@/pages/queue";
 import Logs from "@/pages/logs";
 import Settings from "@/pages/settings";
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/dm" component={() => <ProtectedRoute component={DmManager} />} />
       <Route path="/comments" component={() => <ProtectedRoute component={Comments} />} />
       <Route path="/posts" component={() => <ProtectedRoute component={Posts} />} />
+      <Route path="/schedule" component={() => <ProtectedRoute component={Schedule} />} />
       <Route path="/queue" component={() => <ProtectedRoute component={Queue} />} />
       <Route path="/logs" component={() => <ProtectedRoute component={Logs} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={Settings} />} />

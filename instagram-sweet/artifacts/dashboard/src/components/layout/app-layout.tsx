@@ -1,17 +1,20 @@
 import { Link, useLocation } from "wouter";
 import { 
-  LayoutDashboard, MessageSquare, Send, CalendarPlus, 
+  LayoutDashboard, MessageSquare, Send, CalendarPlus, CalendarClock,
   ListOrdered, Activity, Settings, LogOut, Loader2, Bot
 } from "lucide-react";
 import { useAuthStatus, useLogout, useAccount } from "@/hooks/use-auth";
+import { useAccounts } from "@/hooks/use-accounts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dm", label: "DM Manager", icon: Send },
   { href: "/comments", label: "Comments", icon: MessageSquare },
   { href: "/posts", label: "Auto Posts", icon: CalendarPlus },
+  { href: "/schedule", label: "Scheduler", icon: CalendarClock },
   { href: "/queue", label: "Action Queue", icon: ListOrdered },
   { href: "/logs", label: "Activity Logs", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
