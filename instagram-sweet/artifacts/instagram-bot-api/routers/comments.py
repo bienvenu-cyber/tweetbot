@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.orm import Session
 
-from instagram_client import ig_manager
-from database import get_db, LogEntry, BotSettingsModel
+from instagram_client import account_manager
+from database import get_db, BotSettingsModel
 from utils import get_daily_count, log_action
 
 logger = logging.getLogger(__name__)
@@ -15,11 +16,12 @@ router = APIRouter()
 class PostCommentRequest(BaseModel):
     post_url: str
     comment: str
+    account_username: Optional[str] = None
 
 
 @router.post("/post")
 def post_comment(req: PostCommentRequest, db: Session = Depends(get_db)):
-    cl = ig_manager.get_client()
+    cl = account_manager.get_client(req.account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
 

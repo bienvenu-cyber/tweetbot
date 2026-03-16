@@ -16,21 +16,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("instagram_bot")
 
-from database import init_db, SessionLocal, BotSettingsModel, InstagramSession
-from instagram_client import set_global_proxy
+from database import init_db, SessionLocal, BotSettingsModel
+from instagram_client import set_global_proxy, account_manager
 from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
+from routers.ws import router as ws_router
 
-
-# ---------------------------------------------------------------------------
-# Allowed CORS origins — restrict to your dashboard domains
-# ---------------------------------------------------------------------------
 ALLOWED_ORIGINS = [
     o.strip()
-    for o in os.environ.get(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:3000"
-    ).split(",")
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
     if o.strip()
 ]
 
@@ -38,53 +32,48 @@ ALLOWED_ORIGINS = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("Instagram Bot API v2.0 starting up...")
+    logger.info("Instagram Bot API v3.0 (multi-account) starting up...")
     logger.info("=" * 60)
+
     try:
         init_db()
         logger.info("[DB] Database initialized successfully")
     except Exception as e:
         logger.error(f"[DB] Database initialization failed: {e}")
 
-    # Load proxy from DB on startup
+    # Load proxy from DB
     try:
         db = SessionLocal()
         s = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
         if s and s.proxy_url:
             set_global_proxy(s.proxy_url)
-            logger.info(f"[STARTUP] Proxy loaded from DB: {s.proxy_url[:40]}...")
-        else:
-            logger.warning("[STARTUP] No proxy — using direct US connection")
         db.close()
     except Exception as e:
         logger.error(f"[STARTUP] Failed to load proxy: {e}")
 
-    # Auto-restore Instagram session from DB
+    # Restore all saved sessions
     try:
-        from instagram_client import ig_manager
-        db = SessionLocal()
-        session = db.query(InstagramSession).first()
-        if session:
-            saved_username = session.username
-            logger.info(f"[STARTUP] Found saved session for '{saved_username}', restoring...")
-            result = ig_manager.resume_session(saved_username)
-            if result.get("success"):
-                logger.info(f"[STARTUP] ✓ Auto-resumed session for @{saved_username}")
-            else:
-                logger.warning(f"[STARTUP] Session restore failed: {result.get('message')}")
-        else:
-            logger.info("[STARTUP] No saved session found — user needs to log in")
-        db.close()
+        account_manager.restore_all_sessions()
     except Exception as e:
-        logger.error(f"[STARTUP] Auto-resume error: {e}")
+        logger.error(f"[STARTUP] Session restore error: {e}")
+
+    # Start post scheduler
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from scheduler import process_scheduled_posts
+        sched = AsyncIOScheduler()
+        sched.add_job(process_scheduled_posts, "interval", seconds=60, id="post_scheduler")
+        sched.start()
+        logger.info("[SCHEDULER] Post scheduler started (every 60s)")
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Failed to start: {e}")
 
     yield
     logger.info("Instagram Bot API shutting down...")
 
 
-app = FastAPI(title="Instagram Bot API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Instagram Bot API", version="3.0.0", lifespan=lifespan)
 
-# Restricted CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -93,7 +82,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Auth middleware — protects all /bot-api/* endpoints
 app.add_middleware(AuthMiddleware)
 
 
@@ -112,6 +100,7 @@ async def log_requests(request: Request, call_next):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+# REST routes
 app.include_router(auth.router, prefix="/bot-api/auth", tags=["auth"])
 app.include_router(account.router, prefix="/bot-api/account", tags=["account"])
 app.include_router(dm.router, prefix="/bot-api/dm", tags=["dm"])
@@ -120,6 +109,9 @@ app.include_router(posts.router, prefix="/bot-api/posts", tags=["posts"])
 app.include_router(queue.router, prefix="/bot-api/queue", tags=["queue"])
 app.include_router(logs.router, prefix="/bot-api/logs", tags=["logs"])
 app.include_router(settings.router, prefix="/bot-api/settings", tags=["settings"])
+
+# WebSocket routes
+app.include_router(ws_router, prefix="/bot-api", tags=["websocket"])
 
 
 @app.get("/bot-api/health")
@@ -137,10 +129,10 @@ def health():
         "status": "ok",
         "db": db_status,
         "proxy_configured": bool(get_global_proxy()),
+        "accounts_connected": len(account_manager._clients),
     }
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("BOT_PORT", 8000))
-    logger.info(f"Starting server on port {port}")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, log_level="info")

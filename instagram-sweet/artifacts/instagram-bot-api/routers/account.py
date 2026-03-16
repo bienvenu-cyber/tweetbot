@@ -1,12 +1,13 @@
-from fastapi import APIRouter, HTTPException
-from instagram_client import ig_manager
+from fastapi import APIRouter, HTTPException, Query
+from typing import Optional
+from instagram_client import account_manager
 
 router = APIRouter()
 
 
 @router.get("")
-def get_account():
-    cl = ig_manager.get_client()
+def get_account(username: Optional[str] = Query(None)):
+    cl = account_manager.get_client(username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
     try:

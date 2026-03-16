@@ -1,24 +1,22 @@
-import os
+"""
+Multi-account Instagram client manager.
+Replaces the old singleton `ig_manager` with a manager that handles N accounts.
+Passwords are encrypted at rest in the DB. Sessions are persisted in DB.
+"""
+
 import json
-import time
 import logging
-from typing import Optional
+from typing import Optional, Dict
 from instagrapi import Client
 from instagrapi.exceptions import (
     LoginRequired,
     BadPassword,
     TwoFactorRequired,
     ChallengeRequired,
-    UserNotFound,
-    ClientError,
     ReloginAttemptExceeded,
 )
+from datetime import datetime, timezone
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger("instagram_bot")
 
 _proxy_url: Optional[str] = None
@@ -27,7 +25,7 @@ _proxy_url: Optional[str] = None
 def set_global_proxy(proxy: Optional[str]):
     global _proxy_url
     _proxy_url = proxy.strip() if proxy and proxy.strip() else None
-    logger.info(f"[PROXY] Proxy configured: {'YES (' + _proxy_url[:40] + '...)' if _proxy_url else 'NONE (direct US connection)'}")
+    logger.info(f"[PROXY] Proxy configured: {'YES' if _proxy_url else 'NONE'}")
 
 
 def get_global_proxy() -> Optional[str]:
@@ -44,161 +42,267 @@ def _parse_cookie_string(cookie_str: str) -> dict:
     return cookies
 
 
-class InstagramClientManager:
+def _create_client() -> Client:
+    cl = Client()
+    cl.delay_range = [1, 3]
+    cl.set_locale("fr_BJ")
+    cl.set_timezone_offset(3600)
+    if _proxy_url:
+        cl.set_proxy(_proxy_url)
+    return cl
+
+
+class MultiAccountManager:
+    """Manages multiple Instagram accounts with in-memory clients + DB persistence."""
+
     def __init__(self):
-        self._client: Optional[Client] = None
-        self._username: Optional[str] = None
-        self._logged_in: bool = False
-        self._pending_challenge: bool = False
+        self._clients: Dict[str, Client] = {}  # username -> Client
+        self._pending_challenges: Dict[str, Client] = {}  # username -> Client (during challenge)
 
-    def _create_client(self) -> Client:
-        cl = Client()
-        cl.delay_range = [1, 3]
-        cl.set_locale("fr_BJ")
-        cl.set_timezone_offset(3600)
-        if _proxy_url:
-            logger.info(f"[CLIENT] Setting proxy: {_proxy_url[:50]}...")
-            cl.set_proxy(_proxy_url)
-        else:
-            logger.info("[CLIENT] No proxy — direct connection (server IP: USA)")
-        return cl
+    # ---- DB helpers ----
 
-    # ---- Session persistence via DB ----
-
-    def _load_session_from_db(self, cl: Client, username: str) -> bool:
+    def _get_account(self, username: str):
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
         try:
-            from database import SessionLocal, InstagramSession
-            db = SessionLocal()
-            try:
-                row = db.query(InstagramSession).filter(
-                    InstagramSession.username == username.lower()
-                ).first()
-                if not row:
-                    return False
-                session_data = json.loads(row.session_data)
-                logger.info(f"[SESSION-DB] Found saved session for {username}")
-                cl.set_settings(session_data.get("settings", {}))
-                cl.login(username, "")
-                logger.info(f"[SESSION-DB] Session restored OK for {username}")
-                return True
-            finally:
-                db.close()
-        except Exception as e:
-            logger.warning(f"[SESSION-DB] Failed to load: {e}")
-        return False
+            return db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
+        finally:
+            db.close()
 
-    def _save_session_to_db(self, cl: Client, username: str):
+    def _save_account(self, username: str, client: Client, password: Optional[str] = None):
+        from database import SessionLocal, BotAccount
+        from encryption import encrypt_password
+        db = SessionLocal()
         try:
-            from database import SessionLocal, InstagramSession
-            db = SessionLocal()
-            try:
-                session_json = json.dumps({"username": username, "settings": cl.get_settings()}, default=str)
-                row = db.query(InstagramSession).filter(
-                    InstagramSession.username == username.lower()
-                ).first()
-                if row:
-                    row.session_data = session_json
-                else:
-                    db.add(InstagramSession(username=username.lower(), session_data=session_json))
+            username = username.lower()
+            account = db.query(BotAccount).filter(BotAccount.username == username).first()
+            session_json = json.dumps(client.get_settings(), default=str)
+
+            if account:
+                account.session_data = session_json
+                account.is_logged_in = True
+                account.last_login_at = datetime.now(timezone.utc)
+                if password:
+                    account.encrypted_password = encrypt_password(password)
+            else:
+                account = BotAccount(
+                    username=username,
+                    encrypted_password=encrypt_password(password) if password else None,
+                    session_data=session_json,
+                    is_logged_in=True,
+                    last_login_at=datetime.now(timezone.utc),
+                )
+                db.add(account)
+            db.commit()
+            logger.info(f"[ACCOUNT] Saved account {username}")
+        finally:
+            db.close()
+
+    def _mark_logged_out(self, username: str):
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
+        try:
+            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
+            if account:
+                account.is_logged_in = False
+                account.session_data = None
                 db.commit()
-                logger.info(f"[SESSION-DB] Saved session for {username}")
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"[SESSION-DB] Failed to save: {e}")
+        finally:
+            db.close()
 
-    def _delete_session_from_db(self, username: Optional[str] = None):
+    def _update_last_action(self, username: str):
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
         try:
-            from database import SessionLocal, InstagramSession
-            db = SessionLocal()
-            try:
-                q = db.query(InstagramSession)
-                if username:
-                    q = q.filter(InstagramSession.username == username.lower())
-                q.delete()
+            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
+            if account:
+                account.last_action_at = datetime.now(timezone.utc)
                 db.commit()
-            finally:
-                db.close()
+        finally:
+            db.close()
+
+    # ---- Session restore ----
+
+    def _restore_session(self, username: str) -> bool:
+        """Try to restore a session from DB data."""
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
+        try:
+            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
+            if not account or not account.session_data:
+                return False
+            settings = json.loads(account.session_data)
+            cl = _create_client()
+            cl.set_settings(settings)
+            cl.login(username, "")
+            # Verify session is alive
+            cl.get_timeline_feed()
+            self._clients[username.lower()] = cl
+            logger.info(f"[SESSION] Restored session for @{username}")
+            return True
         except Exception as e:
-            logger.warning(f"[SESSION-DB] Failed to delete: {e}")
+            logger.warning(f"[SESSION] Restore failed for @{username}: {e}")
+            return False
+        finally:
+            db.close()
+
+    def _auto_reconnect(self, username: str) -> bool:
+        """Try to reconnect using encrypted password from DB."""
+        from database import SessionLocal, BotAccount
+        from encryption import decrypt_password
+        db = SessionLocal()
+        try:
+            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
+            if not account or not account.encrypted_password:
+                logger.warning(f"[RECONNECT] No password stored for @{username}")
+                return False
+            password = decrypt_password(account.encrypted_password)
+            cl = _create_client()
+            cl.login(username, password)
+            self._clients[username.lower()] = cl
+            # Update session
+            account.session_data = json.dumps(cl.get_settings(), default=str)
+            account.is_logged_in = True
+            account.last_login_at = datetime.now(timezone.utc)
+            db.commit()
+            logger.info(f"[RECONNECT] Auto-reconnected @{username}")
+            return True
+        except Exception as e:
+            logger.error(f"[RECONNECT] Failed for @{username}: {e}")
+            return False
+        finally:
+            db.close()
+
+    # ---- Public API ----
+
+    def get_client(self, username: Optional[str] = None) -> Optional[Client]:
+        """Get client for a specific account. If none specified, return first active."""
+        if username:
+            key = username.lower()
+            cl = self._clients.get(key)
+            if cl:
+                return cl
+            # Try restore then reconnect
+            if self._restore_session(key) or self._auto_reconnect(key):
+                return self._clients.get(key)
+            return None
+
+        # No username specified → return least-recently-used active client (round-robin)
+        if not self._clients:
+            return None
+        return self._get_least_active_client()
+
+    def _get_least_active_client(self) -> Optional[Client]:
+        """Round-robin: pick the account with the oldest last_action_at."""
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
+        try:
+            accounts = (
+                db.query(BotAccount)
+                .filter(BotAccount.is_active == True, BotAccount.is_logged_in == True)
+                .order_by(BotAccount.last_action_at.asc().nullsfirst())
+                .all()
+            )
+            for acct in accounts:
+                if acct.username in self._clients:
+                    self._update_last_action(acct.username)
+                    return self._clients[acct.username]
+            return next(iter(self._clients.values()), None)
+        finally:
+            db.close()
+
+    def list_accounts(self) -> list:
+        """List all accounts with their status."""
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
+        try:
+            accounts = db.query(BotAccount).order_by(BotAccount.created_at.asc()).all()
+            return [
+                {
+                    "username": a.username,
+                    "is_active": a.is_active,
+                    "is_logged_in": a.username in self._clients,
+                    "last_login_at": a.last_login_at.isoformat() if a.last_login_at else None,
+                    "last_action_at": a.last_action_at.isoformat() if a.last_action_at else None,
+                }
+                for a in accounts
+            ]
+        finally:
+            db.close()
 
     def login(self, username: str, password: str) -> dict:
         username = username.strip().lstrip("@").lower()
         logger.info(f"[LOGIN] Login request for '{username}'")
-        logger.info(f"[LOGIN] Proxy: {'set' if _proxy_url else 'NONE (geo-block risk)'}")
 
-        self._pending_challenge = False
-        cl = self._create_client()
+        # Check account limit
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
+        try:
+            count = db.query(BotAccount).count()
+            if count >= 20 and not db.query(BotAccount).filter(BotAccount.username == username).first():
+                return {"success": False, "message": "Limite de 20 comptes atteinte."}
+        finally:
+            db.close()
 
-        # Try restoring session from DB first
-        if self._load_session_from_db(cl, username):
-            try:
-                cl.get_timeline_feed()
-                self._client = cl
-                self._username = username
-                self._logged_in = True
-                logger.info(f"[LOGIN] Session still valid for {username}")
-                return {"success": True, "message": "Session reprise avec succès", "username": username, "requires_2fa": False}
-            except (LoginRequired, Exception) as e:
-                logger.warning(f"[LOGIN] Session expired: {e}, doing fresh login")
-                self._delete_session_from_db(username)
-                cl = self._create_client()
+        # Try restoring existing session first
+        if self._restore_session(username):
+            self._save_account(username, self._clients[username], password)
+            return {"success": True, "message": "Session reprise avec succès", "username": username}
 
-        logger.info(f"[LOGIN] Attempting fresh login for '{username}'")
+        # Fresh login
+        cl = _create_client()
         try:
             cl.login(username, password)
-            self._save_session_to_db(cl, username)
-            self._client = cl
-            self._username = username
-            # Password NOT stored — cleared after login
-            self._logged_in = True
-            self._pending_challenge = False
+            self._clients[username] = cl
+            self._save_account(username, cl, password)
             logger.info(f"[LOGIN] SUCCESS for {username}")
-            return {"success": True, "message": "Connecté avec succès", "username": username, "requires_2fa": False}
+            return {"success": True, "message": "Connecté avec succès", "username": username}
 
         except TwoFactorRequired:
-            logger.warning(f"[LOGIN] 2FA required for {username}")
             return {"success": False, "message": "2FA activé — désactive-le temporairement.", "username": username, "requires_2fa": True}
 
         except BadPassword:
-            logger.warning(f"[LOGIN] Bad password for {username}")
-            return {"success": False, "message": "Mot de passe incorrect.", "username": username, "requires_2fa": False}
+            return {"success": False, "message": "Mot de passe incorrect.", "username": username}
 
-        except ChallengeRequired as e:
-            logger.warning(f"[LOGIN] CHALLENGE REQUIRED — likely geo-block (server=USA, account=Benin)")
-            self._client = cl
-            self._username = username
-            self._pending_challenge = True
-
+        except ChallengeRequired:
+            self._pending_challenges[username] = cl
             challenge_type = "approve"
             try:
                 last_json = cl.last_json if hasattr(cl, "last_json") and cl.last_json else {}
                 cl.challenge_resolve(last_json)
                 challenge_type = "code"
-                logger.info("[CHALLENGE] Verification code sent to phone/email")
-            except Exception as ce:
-                logger.warning(f"[CHALLENGE] Auto-resolve failed: {ce}")
-
+            except Exception:
+                pass
             return {
                 "success": False,
-                "message": "Instagram bloque la connexion depuis les USA. Approuve depuis l'app OU importe tes cookies de session.",
+                "message": "Instagram bloque la connexion. Approuve depuis l'app OU importe tes cookies.",
                 "username": username,
-                "requires_2fa": False,
                 "challenge": True,
                 "challenge_type": challenge_type,
                 "geo_blocked": not bool(_proxy_url),
             }
 
         except ReloginAttemptExceeded:
-            logger.error(f"[LOGIN] Too many attempts for {username}")
-            return {"success": False, "message": "Trop de tentatives. Attends quelques minutes.", "username": username, "requires_2fa": False}
+            return {"success": False, "message": "Trop de tentatives. Attends quelques minutes.", "username": username}
 
         except Exception as e:
             err_str = str(e)
             logger.error(f"[LOGIN] Error: {type(e).__name__}: {err_str}")
-            if "can't find an account" in err_str.lower():
-                return {"success": False, "message": f"Compte '{username}' introuvable. Vérifie l'username exact.", "username": username, "requires_2fa": False}
-            return {"success": False, "message": err_str, "username": username, "requires_2fa": False}
+            return {"success": False, "message": err_str, "username": username}
+
+    def submit_challenge_code(self, username: str, code: str) -> dict:
+        username = username.lower()
+        cl = self._pending_challenges.get(username)
+        if not cl:
+            return {"success": False, "message": "Aucun challenge en attente pour ce compte."}
+        try:
+            cl.challenge_resolve(cl.last_json, code)
+            self._clients[username] = cl
+            self._save_account(username, cl)
+            del self._pending_challenges[username]
+            return {"success": True, "message": "Code accepté — connecté avec succès.", "username": username}
+        except Exception as e:
+            return {"success": False, "message": f"Code invalide ou expiré: {e}"}
 
     def login_with_cookies(
         self,
@@ -211,138 +315,118 @@ class InstagramClientManager:
         rur: Optional[str] = None,
         username: Optional[str] = None,
     ) -> dict:
-        logger.info("[COOKIE-LOGIN] Cookie import login attempt")
         cookies: dict = {}
-
         if cookie_string:
-            logger.info("[COOKIE-LOGIN] Parsing cookie string from browser")
             cookies = _parse_cookie_string(cookie_string)
         else:
-            if sessionid:
-                cookies["sessionid"] = sessionid
-            if csrftoken:
-                cookies["csrftoken"] = csrftoken
-            if ds_user_id:
-                cookies["ds_user_id"] = ds_user_id
-            if mid:
-                cookies["mid"] = mid
+            if sessionid: cookies["sessionid"] = sessionid
+            if csrftoken: cookies["csrftoken"] = csrftoken
+            if ds_user_id: cookies["ds_user_id"] = ds_user_id
+            if mid: cookies["mid"] = mid
 
         if not cookies.get("sessionid"):
-            logger.error("[COOKIE-LOGIN] sessionid is required")
-            return {"success": False, "message": "Le cookie 'sessionid' est requis. Copie-le depuis ton navigateur."}
+            return {"success": False, "message": "Le cookie 'sessionid' est requis."}
 
-        logger.info(f"[COOKIE-LOGIN] Got cookies: {list(cookies.keys())}")
-        cl = self._create_client()
-
+        cl = _create_client()
         settings = cl.get_settings()
         settings["cookies"] = cookies
-        if mid:
-            settings["mid"] = mid
+        if mid: settings["mid"] = mid
         if ig_did:
             settings["uuids"] = settings.get("uuids", {})
             settings["uuids"]["ig_did"] = ig_did
-        if rur:
-            settings["ig_u_rur"] = rur
+        if rur: settings["ig_u_rur"] = rur
 
         try:
             cl.set_settings(settings)
-            logger.info("[COOKIE-LOGIN] Settings injected, verifying session...")
             cl.login(username or cookies.get("ds_user_id", ""), "")
-        except Exception as e:
-            logger.warning(f"[COOKIE-LOGIN] login() call failed, trying direct account fetch: {e}")
+        except Exception:
+            pass
 
         try:
             user_info = cl.account_info()
-            actual_username = user_info.username
-            self._save_session_to_db(cl, actual_username)
-            self._client = cl
-            self._username = actual_username
-            self._logged_in = True
-            self._pending_challenge = False
-            logger.info(f"[COOKIE-LOGIN] SUCCESS — logged in as @{actual_username}")
+            actual_username = user_info.username.lower()
+            self._clients[actual_username] = cl
+            self._save_account(actual_username, cl)
             return {
                 "success": True,
-                "message": f"Connecté avec succès via cookies (compte: @{actual_username})",
+                "message": f"Connecté via cookies (@{actual_username})",
                 "username": actual_username,
-                "requires_2fa": False,
             }
         except Exception as e:
-            logger.error(f"[COOKIE-LOGIN] Failed to verify session: {e}")
-            return {
-                "success": False,
-                "message": f"Cookies invalides ou expirés. Assure-toi d'être connecté sur Instagram dans ton navigateur et de copier les cookies frais. Erreur: {e}",
-            }
+            return {"success": False, "message": f"Cookies invalides ou expirés: {e}"}
 
-    def submit_challenge_code(self, code: str) -> dict:
-        if not self._pending_challenge or not self._client:
-            return {"success": False, "message": "Aucun challenge en attente. Relance la connexion d'abord."}
-        logger.info(f"[CHALLENGE] Submitting code for {self._username}")
-        try:
-            self._client.challenge_resolve(self._client.last_json, code)
-            self._save_session_to_db(self._client, self._username)
-            self._logged_in = True
-            self._pending_challenge = False
-            logger.info(f"[CHALLENGE] Code accepted for {self._username}")
-            return {"success": True, "message": "Code accepté — connecté avec succès.", "username": self._username}
-        except Exception as e:
-            logger.error(f"[CHALLENGE] Code rejected: {e}")
-            return {"success": False, "message": f"Code invalide ou expiré: {e}"}
-
-    def resume_session(self, username: str) -> dict:
-        """Resume a session from DB on startup."""
-        cl = self._create_client()
-        if self._load_session_from_db(cl, username):
+    def logout(self, username: str):
+        username = username.lower()
+        cl = self._clients.pop(username, None)
+        if cl:
             try:
-                cl.get_timeline_feed()
-                self._client = cl
-                self._username = username
-                self._logged_in = True
-                return {"success": True, "message": f"Session restored for {username}"}
-            except Exception as e:
-                logger.warning(f"[RESUME] Session expired: {e}")
-                self._delete_session_from_db(username)
-        return {"success": False, "message": "No valid session found"}
+                cl.logout()
+            except Exception:
+                pass
+        self._mark_logged_out(username)
+        self._pending_challenges.pop(username, None)
+        return {"success": True, "message": f"@{username} déconnecté"}
 
-    def logout(self):
-        logger.info(f"[LOGOUT] Logging out {self._username}")
-        if self._client:
-            try:
-                self._client.logout()
-            except Exception as e:
-                logger.warning(f"[LOGOUT] Error: {e}")
-        self._delete_session_from_db(self._username)
-        self._client = None
-        self._username = None
-        self._logged_in = False
-        self._pending_challenge = False
-        logger.info("[LOGOUT] Done")
+    def logout_all(self):
+        for username in list(self._clients.keys()):
+            self.logout(username)
+        return {"success": True, "message": "Tous les comptes déconnectés"}
 
-    def get_client(self) -> Optional[Client]:
-        return self._client if self._logged_in else None
-
-    def is_logged_in(self) -> bool:
-        return self._logged_in and self._client is not None
-
-    def get_username(self) -> Optional[str]:
-        return self._username
-
-    def get_auth_status(self) -> dict:
-        if not self.is_logged_in():
-            return {"logged_in": False, "pending_challenge": self._pending_challenge}
+    def remove_account(self, username: str):
+        """Completely remove an account from DB."""
+        self.logout(username)
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
         try:
-            user = self._client.account_info()
-            return {
-                "logged_in": True,
-                "username": user.username,
-                "full_name": user.full_name,
-                "profile_pic_url": str(user.profile_pic_url) if user.profile_pic_url else None,
-                "followers": user.follower_count,
-                "following": user.following_count,
-            }
-        except Exception as e:
-            logger.error(f"[STATUS] Error: {e}")
-            self._logged_in = False
-            return {"logged_in": False}
+            db.query(BotAccount).filter(BotAccount.username == username.lower()).delete()
+            db.commit()
+        finally:
+            db.close()
+        return {"success": True, "message": f"Compte @{username} supprimé"}
+
+    def restore_all_sessions(self):
+        """Called on startup to restore all active sessions."""
+        from database import SessionLocal, BotAccount
+        db = SessionLocal()
+        try:
+            accounts = db.query(BotAccount).filter(
+                BotAccount.is_active == True,
+                BotAccount.is_logged_in == True,
+            ).all()
+            for acct in accounts:
+                logger.info(f"[STARTUP] Restoring session for @{acct.username}...")
+                if self._restore_session(acct.username):
+                    logger.info(f"[STARTUP] ✓ Restored @{acct.username}")
+                elif self._auto_reconnect(acct.username):
+                    logger.info(f"[STARTUP] ✓ Auto-reconnected @{acct.username}")
+                else:
+                    logger.warning(f"[STARTUP] ✗ Could not restore @{acct.username}")
+        finally:
+            db.close()
+
+    def get_auth_status(self, username: Optional[str] = None) -> dict:
+        """Get status of one account or all accounts."""
+        if username:
+            username = username.lower()
+            cl = self._clients.get(username)
+            if not cl:
+                return {"logged_in": False, "username": username}
+            try:
+                user = cl.account_info()
+                return {
+                    "logged_in": True,
+                    "username": user.username,
+                    "full_name": user.full_name,
+                    "profile_pic_url": str(user.profile_pic_url) if user.profile_pic_url else None,
+                    "followers": user.follower_count,
+                    "following": user.following_count,
+                }
+            except Exception:
+                self._clients.pop(username, None)
+                return {"logged_in": False, "username": username}
+        else:
+            return {"accounts": self.list_accounts(), "total": len(self._clients)}
 
 
-ig_manager = InstagramClientManager()
+# Singleton manager instance
+account_manager = MultiAccountManager()
