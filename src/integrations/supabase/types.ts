@@ -14,6 +14,228 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_accounts: {
+        Row: {
+          created_at: string | null
+          encrypted_password: string | null
+          id: number
+          is_active: boolean | null
+          is_logged_in: boolean | null
+          last_action_at: string | null
+          last_login_at: string | null
+          session_data: string | null
+          updated_at: string | null
+          username: string
+        }
+        Insert: {
+          created_at?: string | null
+          encrypted_password?: string | null
+          id?: number
+          is_active?: boolean | null
+          is_logged_in?: boolean | null
+          last_action_at?: string | null
+          last_login_at?: string | null
+          session_data?: string | null
+          updated_at?: string | null
+          username: string
+        }
+        Update: {
+          created_at?: string | null
+          encrypted_password?: string | null
+          id?: number
+          is_active?: boolean | null
+          is_logged_in?: boolean | null
+          last_action_at?: string | null
+          last_login_at?: string | null
+          session_data?: string | null
+          updated_at?: string | null
+          username?: string
+        }
+        Relationships: []
+      }
+      bot_bulk_jobs: {
+        Row: {
+          account_username: string | null
+          created_at: string | null
+          failed: number | null
+          id: number
+          job_type: string
+          message: string | null
+          processed: number | null
+          status: string | null
+          succeeded: number | null
+          total: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          account_username?: string | null
+          created_at?: string | null
+          failed?: number | null
+          id?: number
+          job_type: string
+          message?: string | null
+          processed?: number | null
+          status?: string | null
+          succeeded?: number | null
+          total?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          account_username?: string | null
+          created_at?: string | null
+          failed?: number | null
+          id?: number
+          job_type?: string
+          message?: string | null
+          processed?: number | null
+          status?: string | null
+          succeeded?: number | null
+          total?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      bot_logs: {
+        Row: {
+          account_username: string | null
+          action_type: string
+          created_at: string | null
+          id: number
+          message: string | null
+          status: string
+          target: string | null
+        }
+        Insert: {
+          account_username?: string | null
+          action_type: string
+          created_at?: string | null
+          id?: number
+          message?: string | null
+          status: string
+          target?: string | null
+        }
+        Update: {
+          account_username?: string | null
+          action_type?: string
+          created_at?: string | null
+          id?: number
+          message?: string | null
+          status?: string
+          target?: string | null
+        }
+        Relationships: []
+      }
+      bot_queue: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          id: number
+          payload: string | null
+          processed_at: string | null
+          scheduled_at: string | null
+          status: string | null
+          target: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          id?: number
+          payload?: string | null
+          processed_at?: string | null
+          scheduled_at?: string | null
+          status?: string | null
+          target: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          id?: number
+          payload?: string | null
+          processed_at?: string | null
+          scheduled_at?: string | null
+          status?: string | null
+          target?: string
+        }
+        Relationships: []
+      }
+      bot_scheduled_posts: {
+        Row: {
+          account_username: string
+          caption: string
+          created_at: string | null
+          error_message: string | null
+          id: number
+          image_url: string
+          published_at: string | null
+          scheduled_at: string
+          status: string | null
+        }
+        Insert: {
+          account_username: string
+          caption: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: number
+          image_url: string
+          published_at?: string | null
+          scheduled_at: string
+          status?: string | null
+        }
+        Update: {
+          account_username?: string
+          caption?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: number
+          image_url?: string
+          published_at?: string | null
+          scheduled_at?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
+      bot_settings: {
+        Row: {
+          auto_comment_enabled: boolean | null
+          auto_dm_enabled: boolean | null
+          comment_daily_limit: number | null
+          comment_delay_max: number | null
+          comment_delay_min: number | null
+          dm_daily_limit: number | null
+          dm_delay_max: number | null
+          dm_delay_min: number | null
+          id: number
+          post_daily_limit: number | null
+          proxy_url: string | null
+        }
+        Insert: {
+          auto_comment_enabled?: boolean | null
+          auto_dm_enabled?: boolean | null
+          comment_daily_limit?: number | null
+          comment_delay_max?: number | null
+          comment_delay_min?: number | null
+          dm_daily_limit?: number | null
+          dm_delay_max?: number | null
+          dm_delay_min?: number | null
+          id?: number
+          post_daily_limit?: number | null
+          proxy_url?: string | null
+        }
+        Update: {
+          auto_comment_enabled?: boolean | null
+          auto_dm_enabled?: boolean | null
+          comment_daily_limit?: number | null
+          comment_delay_max?: number | null
+          comment_delay_min?: number | null
+          dm_daily_limit?: number | null
+          dm_delay_max?: number | null
+          dm_delay_min?: number | null
+          id?: number
+          post_daily_limit?: number | null
+          proxy_url?: string | null
+        }
+        Relationships: []
+      }
       content_generation_log: {
         Row: {
           account_id: string | null
