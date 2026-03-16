@@ -1,17 +1,20 @@
 import { Link, useLocation } from "wouter";
 import { 
-  LayoutDashboard, MessageSquare, Send, CalendarPlus, 
+  LayoutDashboard, MessageSquare, Send, CalendarPlus, CalendarClock,
   ListOrdered, Activity, Settings, LogOut, Loader2, Bot
 } from "lucide-react";
 import { useAuthStatus, useLogout, useAccount } from "@/hooks/use-auth";
+import { useAccounts } from "@/hooks/use-accounts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dm", label: "DM Manager", icon: Send },
   { href: "/comments", label: "Comments", icon: MessageSquare },
   { href: "/posts", label: "Auto Posts", icon: CalendarPlus },
+  { href: "/schedule", label: "Scheduler", icon: CalendarClock },
   { href: "/queue", label: "Action Queue", icon: ListOrdered },
   { href: "/logs", label: "Activity Logs", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -21,7 +24,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: auth, isLoading: authLoading } = useAuthStatus();
   const { data: account } = useAccount();
+  const { data: accounts = [] } = useAccounts();
   const logoutMutation = useLogout();
+  const activeCount = accounts.filter(a => a.is_logged_in).length;
 
   if (authLoading) {
     return (
@@ -36,12 +41,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-72 border-r border-border bg-sidebar flex flex-col hidden md:flex shrink-0 shadow-2xl">
         <div className="p-6">
-          <div className="flex items-center gap-3 font-display text-xl font-bold tracking-tight text-white">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/20">
-              <Bot className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-3 font-display text-xl font-bold tracking-tight text-foreground">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
+              <Bot className="w-5 h-5 text-primary-foreground" />
             </div>
             InstaBot Pro
           </div>
+          {accounts.length > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline" className="text-xs">{activeCount}/{accounts.length} online</Badge>
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto py-4">

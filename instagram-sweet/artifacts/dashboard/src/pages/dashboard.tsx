@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Users, MessageCircle, Send, CheckCircle2, AlertCircle, Clock, Activity, Instagram } from "lucide-react";
 import { useAccount } from "@/hooks/use-auth";
@@ -5,9 +6,11 @@ import { useLogs } from "@/hooks/use-logs";
 import { useQueue } from "@/hooks/use-queue";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AccountSelector } from "@/components/account-selector";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const { data: account, isLoading: accountLoading } = useAccount();
   const { data: queueData } = useQueue();
   const { data: logsData } = useLogs({ limit: 10 });
@@ -47,6 +50,9 @@ export default function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Multi-Account Selector */}
+      <AccountSelector selected={selectedAccount} onSelect={setSelectedAccount} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Account Info Card */}
