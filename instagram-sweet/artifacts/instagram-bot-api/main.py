@@ -36,10 +36,10 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     try:
-        init_db()
-        logger.info("[DB] Database initialized successfully")
+        check_db()
+        logger.info("[DB] Database connection verified")
     except Exception as e:
-        logger.error(f"[DB] Database initialization failed: {e}")
+        logger.error(f"[DB] Database connection failed: {e}")
 
     # Load proxy from DB
     try:
