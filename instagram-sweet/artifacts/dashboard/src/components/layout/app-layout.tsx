@@ -41,12 +41,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-72 border-r border-border bg-sidebar flex flex-col hidden md:flex shrink-0 shadow-2xl">
         <div className="p-6">
-          <div className="flex items-center gap-3 font-display text-xl font-bold tracking-tight text-white">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/20">
-              <Bot className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-3 font-display text-xl font-bold tracking-tight text-foreground">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
+              <Bot className="w-5 h-5 text-primary-foreground" />
             </div>
             InstaBot Pro
           </div>
+          {accounts.length > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline" className="text-xs">{activeCount}/{accounts.length} online</Badge>
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto py-4">
