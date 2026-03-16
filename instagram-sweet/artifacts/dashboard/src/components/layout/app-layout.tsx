@@ -24,7 +24,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: auth, isLoading: authLoading } = useAuthStatus();
   const { data: account } = useAccount();
+  const { data: accounts = [] } = useAccounts();
   const logoutMutation = useLogout();
+  const activeCount = accounts.filter(a => a.is_logged_in).length;
 
   if (authLoading) {
     return (
