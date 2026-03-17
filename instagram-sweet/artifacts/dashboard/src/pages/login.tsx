@@ -57,17 +57,26 @@ export default function Login() {
   });
 
   useEffect(() => {
-    if (!checkingAuth && auth?.logged_in) setLocation("/");
+    console.log("[LOGIN] Auth check:", { checkingAuth, auth, logged_in: auth?.logged_in });
+    if (!checkingAuth && auth?.logged_in) {
+      console.log("[LOGIN] Already logged in → redirecting to /");
+      setLocation("/");
+    }
   }, [checkingAuth, auth?.logged_in, setLocation]);
 
   if (checkingAuth) {
+    console.log("[LOGIN] Still checking auth...");
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
-  if (auth?.logged_in) return null;
+  if (auth?.logged_in) {
+    console.log("[LOGIN] Auth confirmed logged_in, returning null");
+    return null;
+  }
+  console.log("[LOGIN] Not logged in, showing login form. Auth data:", auth);
 
   const handleLoginResult = (res: any, username: string, password: string) => {
     if (res.success) {
