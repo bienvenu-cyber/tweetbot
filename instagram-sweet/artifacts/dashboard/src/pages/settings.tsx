@@ -110,8 +110,18 @@ export default function Settings() {
                 <p className="font-semibold text-blue-300">Format proxy supporté :</p>
                 <p className="font-mono text-[11px] bg-black/20 rounded px-2 py-1">socks5://user:password@host:port</p>
                 <p className="font-mono text-[11px] bg-black/20 rounded px-2 py-1">http://user:password@host:port</p>
-                <p className="mt-1">Services recommandés : <strong>Webshare.io</strong> (gratuit), <strong>ProxyScrape</strong>, ou un VPS avec Dante/Squid dans ta région.</p>
               </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/30 space-y-2">
+              <p className="text-xs font-semibold text-green-300">🌍 Proxies recommandés (proche Bénin/France) :</p>
+              <ul className="text-xs text-green-200/80 space-y-1 list-disc list-inside">
+                <li><strong>Webshare.io</strong> — 10 proxies gratuits, choisir serveur France/Europe</li>
+                <li><strong>ProxyScrape.com</strong> — proxies rotatifs gratuits (SOCKS5 & HTTP)</li>
+                <li><strong>Bright Data</strong> — proxies résidentiels premium (meilleur anti-détection)</li>
+                <li><strong>VPS OVH Paris (2€/mois)</strong> + tunnel SSH : <code className="bg-black/20 rounded px-1 text-[11px]">ssh -D 1080 user@vps -N</code> → <code className="bg-black/20 rounded px-1 text-[11px]">socks5://localhost:1080</code></li>
+              </ul>
+              <p className="text-[11px] text-green-200/60 mt-1">💡 Un proxy en France ou Afrique de l'Ouest élimine le blocage géographique Instagram.</p>
             </div>
 
             <div className="space-y-2">

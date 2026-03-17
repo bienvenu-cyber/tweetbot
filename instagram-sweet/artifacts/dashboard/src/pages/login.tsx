@@ -21,7 +21,7 @@ const loginSchema = z.object({
   password: z.string().min(1, "Mot de passe requis"),
 });
 
-const BASE_URL = "/api/bot-api";
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 type Mode = "password" | "cookies";
 
@@ -103,17 +103,11 @@ export default function Login() {
     }
     setCodeSubmitting(true);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 90000);
-
-      const res = await fetch(`${BASE_URL}/auth/challenge`, {
+      const res = await apiFetch(`${BOT_API_BASE}/auth/challenge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: verifyCode.trim() }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timer);
+        body: JSON.stringify({ username: challenge.username, code: verifyCode.trim() }),
+      }, 90000);
 
       const data = await res.json();
       if (data.success) {
@@ -140,20 +134,14 @@ export default function Login() {
     }
     setCookieLoading(true);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 90000); // 90 secondes
-
-      const res = await fetch(`${BASE_URL}/auth/import-cookies`, {
+      const res = await apiFetch(`${BOT_API_BASE}/auth/import-cookies`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cookie_string: cookieString.trim(),
           username: cookieUsername.trim() || undefined,
         }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timer);
+      }, 90000);
 
       const data = await res.json();
       if (data.success) {
