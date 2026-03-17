@@ -399,14 +399,22 @@ export default function DmManager() {
                 <div className="p-8 text-center text-muted-foreground">
                   <MessageCircle className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
                   {threadsError ? (
-                    <>
+                    <div className="space-y-3">
                       <p className="text-sm font-medium">Accès aux DMs indisponible</p>
-                      <p className="text-xs mt-1">Instagram bloque temporairement l'accès à la boîte de réception depuis le serveur. La session n'est pas forcément expirée.</p>
-                    </>
+                      <p className="text-xs">Instagram bloque temporairement l'accès à la boîte de réception depuis le serveur.</p>
+                      <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-left">
+                        <p className="text-xs font-medium text-orange-300 mb-1">💡 Comment débloquer :</p>
+                        <ol className="text-xs text-orange-200/80 space-y-1 list-decimal list-inside">
+                          <li>Connecte-toi à Instagram sur un <b>navigateur</b></li>
+                          <li>Envoie un DM manuellement</li>
+                          <li>Installe l'extension <b>Cookie-Editor</b></li>
+                          <li>Exporte les cookies (JSON)</li>
+                          <li>Réimporte-les via <b>Settings → Comptes</b></li>
+                        </ol>
+                      </div>
+                    </div>
                   ) : (
-                    <>
-                      <p className="text-sm">Aucune conversation récente</p>
-                    </>
+                    <p className="text-sm">Aucune conversation récente</p>
                   )}
                 </div>
               )}

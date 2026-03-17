@@ -1,13 +1,21 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, MessageSquare, Send, CalendarPlus, CalendarClock,
-  ListOrdered, Activity, Settings, LogOut, Loader2, Bot
+  ListOrdered, Activity, Settings, LogOut, Loader2, Bot, ChevronDown, Trash2, Cookie
 } from "lucide-react";
 import { useAuthStatus, useLogout, useAccount } from "@/hooks/use-auth";
 import { useAccounts } from "@/hooks/use-accounts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -80,25 +88,56 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="p-4 border-t border-border bg-card/50">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-secondary/50 border border-border/50">
               <Avatar className="w-10 h-10 border border-border">
-                <AvatarImage src={account?.profile_pic_url || auth.profile_pic_url} />
-                <AvatarFallback>{auth.username?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                <AvatarImage src={account?.profile_pic_url || (auth as any).profile_pic_url} />
+                <AvatarFallback>{auth.active_username?.substring(0, 2).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{auth.username}</p>
+                <p className="text-sm font-medium text-white truncate">{auth.active_username}</p>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse"></span>
                   Online
                 </div>
               </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={() => logoutMutation.mutate()}
-                disabled={logoutMutation.isPending}
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-muted-foreground hover:text-foreground"
+                    disabled={logoutMutation.isPending}
+                  >
+                    {logoutMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <LogOut className="w-4 h-4" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuItem
+                    onClick={() => logoutMutation.mutate({ hard: false })}
+                    className="cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    <div>
+                      <p className="font-medium">Déconnexion rapide</p>
+                      <p className="text-xs text-muted-foreground">Retire de la mémoire, cookies conservés</p>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => logoutMutation.mutate({ hard: true })}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    <div>
+                      <p className="font-medium">Déconnexion complète</p>
+                      <p className="text-xs text-muted-foreground">Supprime les cookies — réimport requis</p>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         )}
