@@ -354,7 +354,8 @@ export default function DmManager() {
                         </>
                       )}
                     </Button>
-                  </form>
+                    </form>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
