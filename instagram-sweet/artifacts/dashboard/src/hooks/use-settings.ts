@@ -1,8 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-import { BOT_API_BASE } from "@/config";
-
-const BASE_URL = BOT_API_BASE;
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 export interface BotSettings {
   dm_daily_limit: number;
@@ -22,7 +19,7 @@ export function useSettings() {
   return useQuery({
     queryKey: ["settings"],
     queryFn: async (): Promise<BotSettings> => {
-      const res = await fetch(`${BASE_URL}/settings`);
+      const res = await apiFetch(`${BOT_API_BASE}/settings`);
       if (!res.ok) throw new Error("Failed to fetch settings");
       return res.json();
     },
@@ -33,7 +30,7 @@ export function useUpdateSettings() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: BotSettings): Promise<BotSettings> => {
-      const res = await fetch(`${BASE_URL}/settings`, {
+      const res = await apiFetch(`${BOT_API_BASE}/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -48,7 +45,7 @@ export function useUpdateSettings() {
 export function useTestProxy() {
   return useMutation({
     mutationFn: async (): Promise<{ success: boolean; message: string; ip?: string }> => {
-      const res = await fetch(`${BASE_URL}/settings/proxy/test`, { method: "POST" });
+      const res = await apiFetch(`${BOT_API_BASE}/settings/proxy/test`, { method: "POST" });
       if (!res.ok) throw new Error("Failed to test proxy");
       return res.json();
     },

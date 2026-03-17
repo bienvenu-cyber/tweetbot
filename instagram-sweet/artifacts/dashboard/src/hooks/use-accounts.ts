@@ -1,8 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-import { BOT_API_BASE } from "@/config";
-
-const BASE_URL = BOT_API_BASE;
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 export interface BotAccount {
   id: number;
@@ -18,7 +15,7 @@ export function useAccounts() {
   return useQuery({
     queryKey: ["accounts"],
     queryFn: async (): Promise<BotAccount[]> => {
-      const res = await fetch(`${BASE_URL}/account/list`);
+      const res = await apiFetch(`${BOT_API_BASE}/account/list`);
       if (!res.ok) throw new Error("Failed to fetch accounts");
       const data = await res.json();
       return data.accounts || [];
@@ -30,7 +27,7 @@ export function useAddAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: { username: string; password: string }) => {
-      const res = await fetch(`${BASE_URL}/auth/login`, {
+      const res = await apiFetch(`${BOT_API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -52,7 +49,7 @@ export function useToggleAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ username, is_active }: { username: string; is_active: boolean }) => {
-      const res = await fetch(`${BASE_URL}/account/${username}/toggle`, {
+      const res = await apiFetch(`${BOT_API_BASE}/account/${username}/toggle`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active }),
@@ -68,7 +65,7 @@ export function useRemoveAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (username: string) => {
-      const res = await fetch(`${BASE_URL}/account/${username}`, { method: "DELETE" });
+      const res = await apiFetch(`${BOT_API_BASE}/account/${username}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to remove account");
       return res.json();
     },

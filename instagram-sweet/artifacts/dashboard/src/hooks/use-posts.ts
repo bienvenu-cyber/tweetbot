@@ -1,14 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CreatePostRequest, StatusMessage, PostCommentRequest } from "@workspace/api-client-react";
-import { BOT_API_BASE } from "@/config";
-
-const BASE_URL = BOT_API_BASE;
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 export function useCreatePost() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreatePostRequest): Promise<StatusMessage> => {
-      const res = await fetch(`${BASE_URL}/posts/create`, {
+      const res = await apiFetch(`${BOT_API_BASE}/posts/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -28,7 +26,7 @@ export function usePostComment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: PostCommentRequest): Promise<StatusMessage> => {
-      const res = await fetch(`${BASE_URL}/comments/post`, {
+      const res = await apiFetch(`${BOT_API_BASE}/comments/post`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
