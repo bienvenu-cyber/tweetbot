@@ -86,8 +86,13 @@ export function useLogin() {
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (): Promise<StatusMessage> => {
-      const res = await apiFetch(`${BASE_URL}/auth/logout`, { method: "POST" }, 10000);
+    mutationFn: async (options?: { hard?: boolean }): Promise<StatusMessage> => {
+      const hard = options?.hard ?? false;
+      const res = await apiFetch(
+        `${BASE_URL}/auth/logout?hard=${hard}`,
+        { method: "POST" },
+        10000,
+      );
       if (!res.ok) throw new Error("Failed to logout");
       return res.json();
     },

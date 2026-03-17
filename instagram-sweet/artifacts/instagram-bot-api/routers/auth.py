@@ -1,8 +1,9 @@
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional
 from instagram_client import account_manager
+import db_proxy
 
 logger = logging.getLogger("instagram_bot")
 router = APIRouter()
@@ -54,10 +55,35 @@ def import_cookies(req: CookieImportRequest):
 
 
 @router.post("/logout")
-def logout(username: Optional[str] = None):
+def logout(username: Optional[str] = None, hard: bool = Query(False)):
+    """Soft logout (default): removes from memory only.
+    Hard logout: also wipes session_data from DB so reimport is needed."""
     if username:
-        return account_manager.logout(username)
-    return account_manager.logout_all()
+        result = account_manager.logout(username, hard=hard)
+        if hard:
+            _wipe_session_data(username)
+        return result
+    # Logout all
+    for u in list(account_manager._clients.keys()):
+        account_manager.logout(u, hard=hard)
+        if hard:
+            _wipe_session_data(u)
+    return {"success": True, "message": "Tous les comptes déconnectés" + (" (cookies supprimés)" if hard else "")}
+
+
+def _wipe_session_data(username: str):
+    """Clear stored session_data in DB so stale cookies can't be restored."""
+    try:
+        username = username.lower()
+        accounts = db_proxy.select("bot_accounts", filters={"username": username}, limit=1)
+        if accounts:
+            db_proxy.update("bot_accounts", accounts[0]["id"], {
+                "session_data": None,
+                "encrypted_password": None,
+            })
+            logger.info(f"[AUTH] Wiped session_data for @{username}")
+    except Exception as e:
+        logger.error(f"[AUTH] Failed to wipe session for @{username}: {e}")
 
 
 @router.get("/status")
