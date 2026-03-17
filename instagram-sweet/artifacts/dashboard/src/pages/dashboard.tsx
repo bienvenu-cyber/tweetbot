@@ -45,7 +45,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                <h3 className="text-2xl font-bold mt-1 text-foreground">{stat.value.toLocaleString()}</h3>
+                <h3 className="text-2xl font-bold mt-1 text-foreground">{typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}</h3>
               </div>
             </CardContent>
           </Card>
