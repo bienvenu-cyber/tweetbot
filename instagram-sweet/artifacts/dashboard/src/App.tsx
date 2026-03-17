@@ -17,6 +17,7 @@ import Schedule from "@/pages/schedule";
 import Queue from "@/pages/queue";
 import Logs from "@/pages/logs";
 import Settings from "@/pages/settings";
+import Guide from "@/pages/guide";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
