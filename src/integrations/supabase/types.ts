@@ -61,6 +61,7 @@ export type Database = {
           id: number
           job_type: string
           message: string | null
+          payload: Json | null
           processed: number | null
           status: string | null
           succeeded: number | null
@@ -74,6 +75,7 @@ export type Database = {
           id?: number
           job_type: string
           message?: string | null
+          payload?: Json | null
           processed?: number | null
           status?: string | null
           succeeded?: number | null
@@ -87,6 +89,7 @@ export type Database = {
           id?: number
           job_type?: string
           message?: string | null
+          payload?: Json | null
           processed?: number | null
           status?: string | null
           succeeded?: number | null
