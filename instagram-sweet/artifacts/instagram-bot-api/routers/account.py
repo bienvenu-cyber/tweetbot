@@ -41,14 +41,29 @@ def get_followers(
     amount: int = Query(50, ge=1, le=500),
     account_username: Optional[str] = Query(None),
 ):
-    """Fetch followers of the connected account. Returns list of usernames."""
-    cl = account_manager.get_client(account_username)
+    """Fetch followers of any account. Uses the active logged-in client to make the request.
+    If account_username is provided, fetches followers of THAT account using the active client.
+    If not provided, fetches followers of the active account itself."""
+    # Always use the active (logged-in) client to make the API call
+    cl = account_manager.get_client()
     if not cl:
-        raise HTTPException(status_code=401, detail="Not logged in")
+        raise HTTPException(status_code=401, detail="No active Instagram session. Log in first.")
+
     try:
-        user_info = cl.account_info()
-        user_id = user_info.pk
-        logger.info(f"[FOLLOWERS] Fetching up to {amount} followers for @{user_info.username} (pk={user_id})")
+        if account_username:
+            # Fetch followers of a different account using the active client
+            target_username = account_username.strip().lstrip("@").lower()
+            logger.info(f"[FOLLOWERS] Looking up @{target_username} via active client")
+            target_user = cl.user_info_by_username(target_username)
+            user_id = target_user.pk
+            display_name = target_username
+        else:
+            # Fetch followers of the active account itself
+            user_info = cl.account_info()
+            user_id = user_info.pk
+            display_name = user_info.username
+
+        logger.info(f"[FOLLOWERS] Fetching up to {amount} followers for @{display_name} (pk={user_id})")
         followers = cl.user_followers(user_id, amount=amount)
         result = []
         for uid, user in followers.items():
