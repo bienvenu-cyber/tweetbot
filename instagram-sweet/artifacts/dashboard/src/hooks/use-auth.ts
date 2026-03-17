@@ -4,10 +4,18 @@ import { BOT_API_BASE, apiFetch } from "@/config";
 
 const BASE_URL = BOT_API_BASE;
 
+// The bot returns { accounts: [...], total: N } — derive a convenient `logged_in` flag
+export interface NormalizedAuth {
+  accounts: Array<{ username: string; is_active: boolean; is_logged_in: boolean; last_login_at: string | null; last_action_at: string | null }>;
+  total: number;
+  logged_in: boolean;
+  active_username: string | null;
+}
+
 export function useAuthStatus() {
   return useQuery({
     queryKey: ["auth-status"],
-    queryFn: async (): Promise<AuthStatus> => {
+    queryFn: async (): Promise<NormalizedAuth> => {
       const url = `${BASE_URL}/auth/status`;
       console.log("[AUTH] Fetching auth status from:", url);
       const res = await apiFetch(url, {}, 10000);
@@ -17,9 +25,20 @@ export function useAuthStatus() {
         console.error("[AUTH] Auth status FAILED:", res.status, text);
         throw new Error("Failed to fetch auth status");
       }
-      const data = await res.json();
-      console.log("[AUTH] Auth status data:", JSON.stringify(data));
-      return data;
+      const raw = await res.json();
+      console.log("[AUTH] Auth status raw:", JSON.stringify(raw));
+
+      // Normalize: derive logged_in from accounts array
+      const accounts = raw.accounts || [];
+      const loggedInAccount = accounts.find((a: any) => a.is_logged_in);
+      const normalized: NormalizedAuth = {
+        accounts,
+        total: raw.total ?? accounts.length,
+        logged_in: !!loggedInAccount,
+        active_username: loggedInAccount?.username ?? null,
+      };
+      console.log("[AUTH] Normalized auth:", JSON.stringify(normalized));
+      return normalized;
     },
     retry: false,
     refetchInterval: false,
