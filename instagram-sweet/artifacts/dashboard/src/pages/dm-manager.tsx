@@ -243,10 +243,14 @@ export default function DmManager() {
                           </Button>
                         </div>
 
-                        {followersError && (
+                         {followersError && (
                           <div className="flex items-center gap-2 text-destructive text-sm">
                             <XCircle className="w-4 h-4" />
-                            <span>Erreur: {(followersError as Error).message}</span>
+                            <span>
+                              {(followersError as Error).message?.includes("401") || (followersError as Error).message?.includes("Not logged in")
+                                ? `Le compte source n'est pas connecté. Connecte-le d'abord via "Ajouter un compte" ou laisse le champ vide pour utiliser ton compte actif.`
+                                : `Erreur: ${(followersError as Error).message}`}
+                            </span>
                           </div>
                         )}
 
