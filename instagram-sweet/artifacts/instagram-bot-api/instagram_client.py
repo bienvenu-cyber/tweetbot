@@ -315,10 +315,12 @@ class MultiAccountManager:
         except Exception as e:
             return {"success": False, "message": f"Cookies invalides ou expirés: {e}"}
 
-    def logout(self, username: str):
+    def logout(self, username: str, hard: bool = False):
+        """Soft logout by default — only clears local state without calling Instagram's logout API.
+        Hard logout actually invalidates the session on Instagram (kills cookies permanently)."""
         username = username.lower()
         cl = self._clients.pop(username, None)
-        if cl:
+        if cl and hard:
             try:
                 cl.logout()
             except Exception:
