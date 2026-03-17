@@ -45,6 +45,7 @@ export default function DmManager() {
     requestId: number;
   } | null>(null);
   const [skipAlreadySent, setSkipAlreadySent] = useState(true);
+  const [currentBulkJobId, setCurrentBulkJobId] = useState<number | null>(null);
 
   const { data: followersData, isLoading: followersLoading, error: followersError } = useFollowers(
     followersRequest?.amount ?? followerCount,
