@@ -8,9 +8,18 @@ export function useAuthStatus() {
   return useQuery({
     queryKey: ["auth-status"],
     queryFn: async (): Promise<AuthStatus> => {
-      const res = await apiFetch(`${BASE_URL}/auth/status`, {}, 10000);
-      if (!res.ok) throw new Error("Failed to fetch auth status");
-      return res.json();
+      const url = `${BASE_URL}/auth/status`;
+      console.log("[AUTH] Fetching auth status from:", url);
+      const res = await apiFetch(url, {}, 10000);
+      console.log("[AUTH] Auth status response:", res.status, res.statusText);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "no body");
+        console.error("[AUTH] Auth status FAILED:", res.status, text);
+        throw new Error("Failed to fetch auth status");
+      }
+      const data = await res.json();
+      console.log("[AUTH] Auth status data:", JSON.stringify(data));
+      return data;
     },
     retry: false,
     refetchInterval: false,

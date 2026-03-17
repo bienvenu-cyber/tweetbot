@@ -23,15 +23,19 @@ const queryClient = new QueryClient();
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const [location, setLocation] = useLocation();
-  const { data: auth, isLoading } = useAuthStatus();
+  const { data: auth, isLoading, error } = useAuthStatus();
+
+  console.log("[PROTECTED] Route:", location, "isLoading:", isLoading, "auth:", JSON.stringify(auth), "error:", error?.message);
 
   useEffect(() => {
     if (!isLoading && !auth?.logged_in && location !== "/login") {
+      console.log("[PROTECTED] Not logged in → redirect to /login");
       setLocation("/login");
     }
   }, [isLoading, auth?.logged_in, location, setLocation]);
 
   if (isLoading) {
+    console.log("[PROTECTED] Loading auth...");
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center text-primary">
         <Loader2 className="w-12 h-12 animate-spin mb-4" />
@@ -41,9 +45,11 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!auth?.logged_in) {
+    console.log("[PROTECTED] Auth check complete: NOT logged in, rendering null");
     return null;
   }
 
+  console.log("[PROTECTED] Auth check complete: LOGGED IN, rendering component");
   return (
     <AppLayout>
       <Component />
