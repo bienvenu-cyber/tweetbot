@@ -1,9 +1,11 @@
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from instagram_client import account_manager
 import db_proxy
 
+logger = logging.getLogger("instagram_bot")
 router = APIRouter()
 
 
@@ -32,6 +34,35 @@ def get_account(username: Optional[str] = Query(None)):
 def list_accounts():
     accounts = account_manager.list_accounts()
     return {"accounts": accounts, "total": len(accounts)}
+
+
+@router.get("/followers")
+def get_followers(
+    amount: int = Query(50, ge=1, le=500),
+    account_username: Optional[str] = Query(None),
+):
+    """Fetch followers of the connected account. Returns list of usernames."""
+    cl = account_manager.get_client(account_username)
+    if not cl:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    try:
+        user_info = cl.account_info()
+        user_id = user_info.pk
+        logger.info(f"[FOLLOWERS] Fetching up to {amount} followers for @{user_info.username} (pk={user_id})")
+        followers = cl.user_followers(user_id, amount=amount)
+        result = []
+        for uid, user in followers.items():
+            result.append({
+                "user_id": str(uid),
+                "username": user.username,
+                "full_name": user.full_name or "",
+                "profile_pic_url": str(user.profile_pic_url) if user.profile_pic_url else None,
+            })
+        logger.info(f"[FOLLOWERS] Got {len(result)} followers")
+        return {"followers": result, "total": len(result)}
+    except Exception as e:
+        logger.error(f"[FOLLOWERS] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class ToggleRequest(BaseModel):
