@@ -182,8 +182,8 @@ def _broadcast_sync(loop, job_id, job):
         pass
 
 
-async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str]):
-    await asyncio.to_thread(_bulk_send_sync, job_id, usernames, message, delay_min, delay_max, account_username)
+async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True):
+    await asyncio.to_thread(_bulk_send_sync, job_id, usernames, message, delay_min, delay_max, account_username, skip_already_sent)
 
 
 @router.post("/bulk-send")
