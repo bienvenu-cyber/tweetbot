@@ -89,7 +89,6 @@ export default function DmManager() {
 
   const onBulkSubmit = (data: z.infer<typeof bulkDmSchema>) => {
     let usernameArray: string[];
-    const sourceAccountUsername = bulkSource === "followers" ? followersRequest?.accountUsername : undefined;
 
     if (bulkSource === "followers") {
       if (!followersData?.followers?.length) {
@@ -111,10 +110,10 @@ export default function DmManager() {
       message: data.message,
       delay_min: data.delay_min,
       delay_max: data.delay_max,
-      account_username: sourceAccountUsername,
       skip_already_sent: skipAlreadySent,
     }, {
       onSuccess: (res) => {
+        setCurrentBulkJobId(res.job_id ?? null);
         toast({ title: "Campagne lancée", description: `${res.queued} messages en file d'attente.` });
         bulkForm.reset();
       },
