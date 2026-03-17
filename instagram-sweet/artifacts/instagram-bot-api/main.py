@@ -137,4 +137,5 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.environ.get("BOT_PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, log_level="info")
+    is_dev = os.environ.get("ENV", "production").lower() in ("dev", "development", "local")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=is_dev, log_level="info")
