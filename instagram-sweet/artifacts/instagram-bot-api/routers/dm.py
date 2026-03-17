@@ -81,7 +81,16 @@ def send_dm(req: SendDmRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str]):
+def _get_already_messaged_usernames() -> set:
+    """Get usernames that already received a successful DM to avoid duplicates."""
+    try:
+        logs = db_proxy.select("bot_logs", filters={"action_type": "dm_send", "status": "success"}, limit=1000)
+        return {log.get("target", "").lower() for log in logs if log.get("target")}
+    except Exception:
+        return set()
+
+
+def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True):
     import time
     loop = asyncio.new_event_loop()
     try:
@@ -92,11 +101,23 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
         settings = db_proxy.select_first("bot_settings", {"id": "1"})
         daily_limit = settings.get("dm_daily_limit", 50) if settings else 50
 
+        # Dedup: skip users already messaged
+        already_sent = _get_already_messaged_usernames() if skip_already_sent else set()
+        skipped = 0
+
         for i, username in enumerate(usernames):
             # Refresh job status
             job = db_proxy.select_one("bot_bulk_jobs", job_id)
             if not job or job.get("status") == "cancelled":
                 break
+
+            # Skip already messaged
+            if username.lower() in already_sent:
+                skipped += 1
+                log_action("dm_send", username, "skipped", "Already messaged in a previous campaign")
+                processed = job.get("processed", 0) + 1
+                db_proxy.update("bot_bulk_jobs", job_id, {"processed": processed, "message": f"Skipped {skipped} duplicates"})
+                continue
 
             cl = account_manager.get_client(account_username)
             if not cl:
@@ -119,6 +140,7 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
                 cl.direct_send(message, user_ids=[user_id])
                 log_action("dm_send", username, "success", f"Bulk DM sent: {message[:50]}")
                 succeeded += 1
+                already_sent.add(username.lower())  # Add to dedup set
             except Exception as e:
                 log_action("dm_send", username, "error", str(e))
                 failed += 1
@@ -138,7 +160,8 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
         # Final status
         job = db_proxy.select_one("bot_bulk_jobs", job_id)
         if job and job.get("status") == "running":
-            db_proxy.update("bot_bulk_jobs", job_id, {"status": "completed"})
+            final_msg = f"Done. Skipped {skipped} duplicates." if skipped > 0 else "Done."
+            db_proxy.update("bot_bulk_jobs", job_id, {"status": "completed", "message": final_msg})
     finally:
         loop.close()
 
