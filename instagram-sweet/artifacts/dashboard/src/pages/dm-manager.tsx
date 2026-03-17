@@ -176,7 +176,9 @@ export default function DmManager() {
                   <CardDescription>Envoie des messages à plusieurs utilisateurs avec des délais sûrs. Les doublons sont automatiquement ignorés.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={bulkForm.handleSubmit(onBulkSubmit)} className="space-y-4">
+                  <div className="space-y-4">
+                    <BulkJobTracker jobId={currentBulkJobId} onDone={() => setCurrentBulkJobId(null)} />
+                    <form onSubmit={bulkForm.handleSubmit(onBulkSubmit)} className="space-y-4">
                     {/* Source selector */}
                     <div className="space-y-3">
                       <Label className="text-base font-semibold">Source des destinataires</Label>
