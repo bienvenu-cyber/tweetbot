@@ -109,7 +109,8 @@ export default function DmManager() {
                   <form onSubmit={singleForm.handleSubmit(onSingleSubmit)} className="space-y-4">
                     <div className="space-y-2">
                       <Label>Target Username</Label>
-                      <Input placeholder="@username" {...singleForm.register("username")} className="bg-background/50" />
+                      <Input placeholder="bv_4real (sans @)" {...singleForm.register("username")} className="bg-background/50" />
+                      <p className="text-xs text-muted-foreground">Le nom d'utilisateur Instagram, sans le @. Ex: <code className="text-primary">bv_4real</code></p>
                     </div>
                     <div className="space-y-2">
                       <Label>Message</Label>
