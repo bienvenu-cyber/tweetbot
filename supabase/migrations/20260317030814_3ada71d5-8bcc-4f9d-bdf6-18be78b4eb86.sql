@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_bulk_jobs ADD COLUMN IF NOT EXISTS payload jsonb DEFAULT '{}'::jsonb;

@@ -66,6 +66,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[SCHEDULER] Failed to start: {e}")
 
+    # Resume interrupted bulk jobs
+    try:
+        from routers.dm import resume_interrupted_jobs
+        resume_interrupted_jobs()
+    except Exception as e:
+        logger.error(f"[RESUME] Failed: {e}")
+
     yield
     logger.info("Instagram Bot API shutting down...")
 
@@ -130,4 +137,5 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.environ.get("BOT_PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, log_level="info")
+    is_dev = os.environ.get("ENV", "production").lower() in ("dev", "development", "local")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=is_dev, log_level="info")

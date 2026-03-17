@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import logging
 from fastapi import APIRouter, HTTPException, Query
@@ -13,6 +14,8 @@ from instagram_errors import normalize_username, normalize_usernames, summarize_
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+MAX_CONSECUTIVE_SEND_FAILURES = 3
 
 
 class SendDmRequest(BaseModel):
@@ -75,6 +78,12 @@ def _broadcast_sync(job_id: int, job: dict):
         pass
 
 
+def _is_dm_blocked_error(error: Exception | str) -> bool:
+    """Detect if Instagram is blocking DM sending (not just a user-level error)."""
+    lowered = str(error).lower()
+    return "threads/broadcast/text" in lowered or ("400 client error" in lowered and "direct_v2" in lowered)
+
+
 @router.get("/threads")
 def get_threads(amount: int = Query(20), account_username: Optional[str] = Query(None)):
     cl = account_manager.get_client(account_username)
@@ -130,7 +139,7 @@ def send_dm(req: SendDmRequest):
         raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
 
 
-def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True):
+def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True, start_index: int = 0):
     import time
 
     usernames = normalize_usernames(usernames)
@@ -152,8 +161,13 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
     skipped = 0
     stop_reason: Optional[str] = None
     last_error: Optional[str] = None
+    consecutive_send_failures = 0
 
     for index, username in enumerate(usernames):
+        # Skip already-processed entries on resume
+        if index < start_index:
+            continue
+
         job = db_proxy.select_one("bot_bulk_jobs", job_id)
         if not job:
             return
@@ -194,9 +208,22 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
             cl.direct_send(message, user_ids=[int(user_id)])
             succeeded += 1
             already_sent.add(username)
+            consecutive_send_failures = 0
         except Exception as exc:
             failed += 1
             last_error = summarize_instagram_error(exc, context="dm_send")
+
+            if _is_dm_blocked_error(exc):
+                consecutive_send_failures += 1
+                if consecutive_send_failures >= MAX_CONSECUTIVE_SEND_FAILURES:
+                    stop_reason = (
+                        f"Instagram bloque l'envoi de DM depuis cette session "
+                        f"({consecutive_send_failures} échecs consécutifs). "
+                        f"Réimporte les cookies du compte puis réessaie."
+                    )
+                    break
+            else:
+                consecutive_send_failures = 0
 
         processed += 1
         updated = db_proxy.update("bot_bulk_jobs", job_id, {
@@ -219,6 +246,10 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
     elif final_status == "failed":
         summary_status = "failed"
         summary_message = stop_reason or last_error or "Campagne interrompue."
+    elif stop_reason:
+        final_status = "failed"
+        summary_status = "failed"
+        summary_message = stop_reason
     else:
         final_status = "completed"
         summary_status = "success" if (final_job.get("failed", 0) or 0) == 0 else "failed"
@@ -226,8 +257,6 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
             f"Campagne terminée — {final_job.get('succeeded', 0) or 0} envoyés, "
             f"{final_job.get('failed', 0) or 0} échecs, {skipped} doublons ignorés."
         )
-        if stop_reason:
-            summary_message = f"{summary_message} {stop_reason}"
 
     updated = db_proxy.update("bot_bulk_jobs", job_id, {
         "status": final_status,
@@ -237,8 +266,8 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
     log_action("bulk_dm", str(len(usernames)), summary_status, summary_message, account_username=account_username)
 
 
-async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True):
-    await asyncio.to_thread(_bulk_send_sync, job_id, usernames, message, delay_min, delay_max, account_username, skip_already_sent)
+async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True, start_index: int = 0):
+    await asyncio.to_thread(_bulk_send_sync, job_id, usernames, message, delay_min, delay_max, account_username, skip_already_sent, start_index)
 
 
 @router.post("/bulk-send")
@@ -262,6 +291,12 @@ async def bulk_send_dm(req: BulkSendDmRequest):
         "succeeded": 0,
         "failed": 0,
         "message": "Campagne démarrée",
+        "payload": json.dumps({
+            "usernames": usernames,
+            "message": req.message,
+            "delay_min": req.delay_min,
+            "delay_max": req.delay_max,
+        }),
     })
 
     job_id = job.get("id")
@@ -275,6 +310,52 @@ async def bulk_send_dm(req: BulkSendDmRequest):
         "queued": len(usernames),
         "message": f"Bulk DM job #{job_id} started",
     }
+
+
+def resume_interrupted_jobs():
+    """Called at startup to resume any bulk jobs left in 'running' state."""
+    try:
+        jobs = db_proxy.select("bot_bulk_jobs", filters={"status": "running"}, limit=10)
+        if not jobs:
+            logger.info("[RESUME] No interrupted bulk jobs found")
+            return
+
+        for job in jobs:
+            job_id = job.get("id")
+            payload_raw = job.get("payload")
+            if not payload_raw:
+                logger.warning(f"[RESUME] Job #{job_id} has no payload, marking as failed")
+                db_proxy.update("bot_bulk_jobs", job_id, {"status": "failed", "message": "Impossible de reprendre : données manquantes."})
+                continue
+
+            try:
+                payload = json.loads(payload_raw) if isinstance(payload_raw, str) else payload_raw
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"[RESUME] Job #{job_id} has invalid payload")
+                db_proxy.update("bot_bulk_jobs", job_id, {"status": "failed", "message": "Impossible de reprendre : données invalides."})
+                continue
+
+            usernames = payload.get("usernames", [])
+            message = payload.get("message", "")
+            delay_min = payload.get("delay_min", 30)
+            delay_max = payload.get("delay_max", 120)
+            account_username = job.get("account_username")
+            processed = job.get("processed", 0) or 0
+
+            if not usernames or not message:
+                db_proxy.update("bot_bulk_jobs", job_id, {"status": "failed", "message": "Impossible de reprendre : données incomplètes."})
+                continue
+
+            logger.info(f"[RESUME] Resuming job #{job_id} from index {processed}/{len(usernames)}")
+            db_proxy.update("bot_bulk_jobs", job_id, {"message": f"Reprise après redémarrage — {processed}/{len(usernames)} déjà traités"})
+
+            asyncio.create_task(bulk_send_task(
+                job_id, usernames, message, delay_min, delay_max,
+                account_username, skip_already_sent=True, start_index=processed,
+            ))
+
+    except Exception as exc:
+        logger.error(f"[RESUME] Failed to resume jobs: {exc}")
 
 
 @router.get("/bulk-jobs")
