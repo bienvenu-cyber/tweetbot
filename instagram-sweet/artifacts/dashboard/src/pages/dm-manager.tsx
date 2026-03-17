@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { BulkJobTracker } from "@/components/bulk-job-tracker";
 
 const singleDmSchema = z.object({
   username: z.string().min(1, "Username is required"),
