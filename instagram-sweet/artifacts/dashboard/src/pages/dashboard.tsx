@@ -73,11 +73,11 @@ export default function Dashboard() {
                   <div className="h-3 bg-secondary rounded w-1/3"></div>
                 </div>
               </div>
-            ) : accountError ? (
+             ) : accountError ? (
               <div className="text-center py-8 space-y-3">
-                <AlertCircle className="w-10 h-10 mx-auto text-destructive/60" />
-                <p className="text-sm font-medium text-destructive">Session Instagram expirée</p>
-                <p className="text-xs text-muted-foreground">Ré-importe tes cookies depuis le sélecteur de comptes pour reconnecter la session.</p>
+                <AlertCircle className="w-10 h-10 mx-auto text-muted-foreground/60" />
+                <p className="text-sm font-medium text-foreground">Infos du compte indisponibles</p>
+                <p className="text-xs text-muted-foreground">Instagram bloque temporairement certaines requêtes depuis le serveur. La session est probablement toujours active — les envois de DM et autres actions fonctionnent quand même.</p>
               </div>
             ) : account ? (
               <div className="text-center space-y-4">
