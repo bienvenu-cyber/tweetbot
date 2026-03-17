@@ -112,28 +112,37 @@ export default function Login() {
   };
 
   const handleSubmitCode = async () => {
+    console.log("[LOGIN] handleSubmitCode called, code:", verifyCode.trim(), "username:", challenge.username);
     if (!verifyCode.trim()) {
       toast({ title: "Erreur", description: "Entre le code de vérification.", variant: "destructive" });
       return;
     }
     setCodeSubmitting(true);
     try {
-      const res = await apiFetch(`${BOT_API_BASE}/auth/challenge`, {
+      const url = `${BOT_API_BASE}/auth/challenge`;
+      console.log("[LOGIN] POST", url);
+      const res = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: challenge.username, code: verifyCode.trim() }),
       }, 90000);
 
+      console.log("[LOGIN] Challenge response status:", res.status, res.statusText);
       const data = await res.json();
+      console.log("[LOGIN] Challenge response body:", JSON.stringify(data));
       if (data.success) {
+        console.log("[LOGIN] Challenge SUCCESS → invalidating auth cache");
         await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         await queryClient.invalidateQueries({ queryKey: ["account-info"] });
+        console.log("[LOGIN] Cache invalidated → redirecting to /");
         toast({ title: "✓ Connecté !", description: `@${data.username}` });
         setLocation("/");
       } else {
+        console.log("[LOGIN] Challenge FAILED:", data.message);
         toast({ title: "Code invalide", description: data.message, variant: "destructive" });
       }
     } catch (e: any) {
+      console.error("[LOGIN] Challenge ERROR:", e.name, e.message, e);
       if (e.name === 'AbortError') {
         toast({ title: "Timeout", description: "Le serveur met trop de temps. Réessaie dans 30 secondes.", variant: "destructive" });
       } else {
@@ -145,13 +154,16 @@ export default function Login() {
   };
 
   const handleCookieImport = async () => {
+    console.log("[LOGIN] handleCookieImport called, cookieString length:", cookieString.trim().length, "username:", cookieUsername);
     if (!cookieString.trim()) {
       toast({ title: "Erreur", description: "Colle tes cookies Instagram.", variant: "destructive" });
       return;
     }
     setCookieLoading(true);
     try {
-      const res = await apiFetch(`${BOT_API_BASE}/auth/import-cookies`, {
+      const url = `${BOT_API_BASE}/auth/import-cookies`;
+      console.log("[LOGIN] POST", url);
+      const res = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -160,16 +172,26 @@ export default function Login() {
         }),
       }, 90000);
 
+      console.log("[LOGIN] Cookie import response status:", res.status, res.statusText);
       const data = await res.json();
+      console.log("[LOGIN] Cookie import response body:", JSON.stringify(data));
       if (data.success) {
+        console.log("[LOGIN] Cookie import SUCCESS → invalidating auth cache");
         await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         await queryClient.invalidateQueries({ queryKey: ["account-info"] });
+        // Wait briefly for queries to refetch
+        await new Promise(r => setTimeout(r, 500));
+        const freshAuth = queryClient.getQueryData(["auth-status"]);
+        console.log("[LOGIN] Fresh auth after invalidation:", JSON.stringify(freshAuth));
+        console.log("[LOGIN] Redirecting to /");
         toast({ title: "✓ Connecté via cookies !", description: data.message });
         setLocation("/");
       } else {
+        console.log("[LOGIN] Cookie import FAILED:", data.message);
         toast({ title: "Import échoué", description: data.message, variant: "destructive" });
       }
     } catch (e: any) {
+      console.error("[LOGIN] Cookie import ERROR:", e.name, e.message, e);
       if (e.name === 'AbortError') {
         toast({ title: "Timeout", description: "Le serveur met trop de temps à répondre. Réessaie dans 30 secondes.", variant: "destructive" });
       } else {
