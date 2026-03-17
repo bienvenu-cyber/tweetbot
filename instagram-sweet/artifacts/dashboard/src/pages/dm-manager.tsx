@@ -36,11 +36,21 @@ export default function DmManager() {
   // Bulk campaign state
   const [bulkSource, setBulkSource] = useState<"manual" | "followers">("followers");
   const [manualUsernames, setManualUsernames] = useState("");
-  const [loadFollowers, setLoadFollowers] = useState(false);
   const [followerCount, setFollowerCount] = useState(100);
+  const [followersAccountUsernameInput, setFollowersAccountUsernameInput] = useState("");
+  const [followersRequest, setFollowersRequest] = useState<{
+    amount: number;
+    accountUsername?: string;
+    requestId: number;
+  } | null>(null);
   const [skipAlreadySent, setSkipAlreadySent] = useState(true);
 
-  const { data: followersData, isLoading: followersLoading, error: followersError } = useFollowers(followerCount, loadFollowers);
+  const { data: followersData, isLoading: followersLoading, error: followersError } = useFollowers(
+    followersRequest?.amount ?? followerCount,
+    Boolean(followersRequest),
+    followersRequest?.accountUsername,
+    followersRequest?.requestId ?? 0,
+  );
 
   const singleForm = useForm<z.infer<typeof singleDmSchema>>({
     resolver: zodResolver(singleDmSchema),
