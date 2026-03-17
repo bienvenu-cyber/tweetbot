@@ -21,7 +21,7 @@ const loginSchema = z.object({
   password: z.string().min(1, "Mot de passe requis"),
 });
 
-const BASE_URL = "/api/bot-api";
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 type Mode = "password" | "cookies";
 
