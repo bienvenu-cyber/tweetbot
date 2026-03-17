@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/queue", label: "Action Queue", icon: ListOrdered },
   { href: "/logs", label: "Activity Logs", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/guide", label: "Guide Admin", icon: BookOpen },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {

@@ -70,6 +70,7 @@ function Router() {
       <Route path="/queue" component={() => <ProtectedRoute component={Queue} />} />
       <Route path="/logs" component={() => <ProtectedRoute component={Logs} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={Settings} />} />
+      <Route path="/guide" component={() => <ProtectedRoute component={Guide} />} />
       <Route component={NotFound} />
     </Switch>
   );
