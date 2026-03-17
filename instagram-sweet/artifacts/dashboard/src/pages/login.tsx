@@ -103,16 +103,11 @@ export default function Login() {
     }
     setCodeSubmitting(true);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 90000);
-
       const res = await apiFetch(`${BOT_API_BASE}/auth/challenge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: challenge.username, code: verifyCode.trim() }),
       }, 90000);
-
-      clearTimeout(timer);
 
       const data = await res.json();
       if (data.success) {
