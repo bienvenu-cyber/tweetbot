@@ -1,7 +1,6 @@
 import asyncio
 import random
 import logging
-from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
@@ -10,6 +9,7 @@ from instagram_client import account_manager
 import db_proxy
 from utils import get_daily_count, log_action
 from routers.ws import broadcast_job_update
+from instagram_errors import normalize_username, normalize_usernames, summarize_instagram_error, is_rate_limited
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,6 +27,52 @@ class BulkSendDmRequest(BaseModel):
     delay_min: int = 30
     delay_max: int = 120
     account_username: Optional[str] = None
+
+
+def _resolve_recipient_id(cl, username: str) -> int:
+    clean_username = normalize_username(username)
+    last_error: Exception | None = None
+
+    resolvers = [
+        lambda: cl.user_id_from_username(clean_username),
+        lambda: getattr(cl.user_info_by_username(clean_username), "pk", None),
+    ]
+
+    if hasattr(cl, "user_info_by_username_v1"):
+        resolvers.insert(1, lambda: getattr(cl.user_info_by_username_v1(clean_username), "pk", None))
+
+    for resolver in resolvers:
+        try:
+            value = resolver()
+            if value:
+                return int(value)
+        except Exception as exc:
+            last_error = exc
+            logger.warning(f"[DM] Could not resolve @{clean_username}: {exc}")
+
+    if last_error:
+        raise last_error
+
+    raise ValueError(f"Impossible de résoudre @{clean_username}")
+
+
+def _job_payload(job_id: int, job: dict) -> dict:
+    return {
+        "job_id": job.get("id", job_id),
+        "status": job.get("status"),
+        "total": job.get("total"),
+        "processed": job.get("processed"),
+        "succeeded": job.get("succeeded"),
+        "failed": job.get("failed"),
+        "message": job.get("message"),
+    }
+
+
+def _broadcast_sync(job_id: int, job: dict):
+    try:
+        asyncio.run(broadcast_job_update(job_id, _job_payload(job_id, job)))
+    except Exception:
+        pass
 
 
 @router.get("/threads")
@@ -52,13 +98,15 @@ def get_threads(amount: int = Query(20), account_username: Optional[str] = Query
                 "unread": t.unread_count > 0 if hasattr(t, "unread_count") else False,
             })
         return {"threads": result, "total": len(result)}
-    except Exception as e:
-        logger.error(f"Error fetching threads: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        detail = summarize_instagram_error(exc, context="dm_threads")
+        logger.error(f"Error fetching threads: {exc}")
+        raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
 
 
 @router.post("/send")
 def send_dm(req: SendDmRequest):
+    clean_username = normalize_username(req.username)
     cl = account_manager.get_client(req.account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
@@ -68,118 +116,125 @@ def send_dm(req: SendDmRequest):
     daily_count = get_daily_count("dm_send")
 
     if daily_count >= daily_limit:
-        log_action("dm_send", req.username, "blocked", f"Daily limit reached ({daily_limit})")
+        log_action("dm_send", clean_username, "failed", f"Daily limit reached ({daily_limit})", account_username=req.account_username)
         raise HTTPException(status_code=429, detail=f"Daily DM limit reached ({daily_limit})")
 
     try:
-        user_id = cl.user_id_from_username(req.username)
-        cl.direct_send(req.message, user_ids=[user_id])
-        log_action("dm_send", req.username, "success", f"DM sent: {req.message[:50]}")
-        return {"success": True, "message": f"DM sent to @{req.username}"}
-    except Exception as e:
-        log_action("dm_send", req.username, "error", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def _get_already_messaged_usernames() -> set:
-    """Get usernames that already received a successful DM to avoid duplicates."""
-    try:
-        logs = db_proxy.select("bot_logs", filters={"action_type": "dm_send", "status": "success"}, limit=1000)
-        return {log.get("target", "").lower() for log in logs if log.get("target")}
-    except Exception:
-        return set()
+        user_id = _resolve_recipient_id(cl, clean_username)
+        cl.direct_send(req.message, user_ids=[int(user_id)])
+        log_action("dm_send", clean_username, "success", f"DM sent: {req.message[:50]}", account_username=req.account_username)
+        return {"success": True, "message": f"DM sent to @{clean_username}"}
+    except Exception as exc:
+        detail = summarize_instagram_error(exc, context="dm_send")
+        log_action("dm_send", clean_username, "failed", detail, account_username=req.account_username)
+        raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
 
 
 def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True):
     import time
-    loop = asyncio.new_event_loop()
-    try:
+
+    usernames = normalize_usernames(usernames)
+    settings = db_proxy.select_first("bot_settings", {"id": "1"})
+    daily_limit = settings.get("dm_daily_limit", 50) if settings else 50
+
+    job = db_proxy.select_one("bot_bulk_jobs", job_id)
+    if not job:
+        return
+
+    already_sent: set[str] = set()
+    if skip_already_sent:
+        try:
+            logs = db_proxy.select("bot_logs", filters={"action_type": "dm_send", "status": "success"}, limit=1000)
+            already_sent = {normalize_username(log.get("target", "")) for log in logs if log.get("target")}
+        except Exception:
+            already_sent = set()
+
+    skipped = 0
+    stop_reason: Optional[str] = None
+    last_error: Optional[str] = None
+
+    for index, username in enumerate(usernames):
         job = db_proxy.select_one("bot_bulk_jobs", job_id)
         if not job:
             return
+        if job.get("status") == "cancelled":
+            stop_reason = "Campagne annulée."
+            break
 
-        settings = db_proxy.select_first("bot_settings", {"id": "1"})
-        daily_limit = settings.get("dm_daily_limit", 50) if settings else 50
+        processed = job.get("processed", 0) or 0
+        succeeded = job.get("succeeded", 0) or 0
+        failed = job.get("failed", 0) or 0
 
-        # Dedup: skip users already messaged
-        already_sent = _get_already_messaged_usernames() if skip_already_sent else set()
-        skipped = 0
-
-        for i, username in enumerate(usernames):
-            # Refresh job status
-            job = db_proxy.select_one("bot_bulk_jobs", job_id)
-            if not job or job.get("status") == "cancelled":
-                break
-
-            # Skip already messaged
-            if username.lower() in already_sent:
-                skipped += 1
-                log_action("dm_send", username, "skipped", "Already messaged in a previous campaign")
-                processed = job.get("processed", 0) + 1
-                db_proxy.update("bot_bulk_jobs", job_id, {"processed": processed, "message": f"Skipped {skipped} duplicates"})
-                continue
-
-            cl = account_manager.get_client(account_username)
-            if not cl:
-                db_proxy.update("bot_bulk_jobs", job_id, {"status": "failed", "message": "Client disconnected"})
-                _broadcast_sync(loop, job_id, {**job, "status": "failed", "message": "Client disconnected"})
-                break
-
-            daily_count = get_daily_count("dm_send")
-            if daily_count >= daily_limit:
-                log_action("dm_send", username, "blocked", f"Daily limit reached ({daily_limit})")
-                db_proxy.update("bot_bulk_jobs", job_id, {"status": "completed", "message": f"Stopped at daily limit ({daily_limit})"})
-                break
-
-            succeeded = job.get("succeeded", 0)
-            failed = job.get("failed", 0)
-            processed = job.get("processed", 0)
-
-            try:
-                user_id = cl.user_id_from_username(username)
-                cl.direct_send(message, user_ids=[user_id])
-                log_action("dm_send", username, "success", f"Bulk DM sent: {message[:50]}")
-                succeeded += 1
-                already_sent.add(username.lower())  # Add to dedup set
-            except Exception as e:
-                log_action("dm_send", username, "error", str(e))
-                failed += 1
-
+        if username in already_sent:
+            skipped += 1
             processed += 1
             updated = db_proxy.update("bot_bulk_jobs", job_id, {
                 "processed": processed,
                 "succeeded": succeeded,
                 "failed": failed,
+                "message": f"{processed}/{len(usernames)} traités — {skipped} doublons ignorés",
             })
-            _broadcast_sync(loop, job_id, updated)
+            _broadcast_sync(job_id, updated)
+            continue
 
-            if i < len(usernames) - 1:
-                delay = random.randint(delay_min, delay_max)
-                time.sleep(delay)
+        cl = account_manager.get_client(account_username)
+        if not cl:
+            stop_reason = "Session Instagram du compte expéditeur indisponible."
+            updated = db_proxy.update("bot_bulk_jobs", job_id, {"status": "failed", "message": stop_reason})
+            _broadcast_sync(job_id, updated)
+            break
 
-        # Final status
-        job = db_proxy.select_one("bot_bulk_jobs", job_id)
-        if job and job.get("status") == "running":
-            final_msg = f"Done. Skipped {skipped} duplicates." if skipped > 0 else "Done."
-            db_proxy.update("bot_bulk_jobs", job_id, {"status": "completed", "message": final_msg})
-    finally:
-        loop.close()
+        daily_count = get_daily_count("dm_send")
+        if daily_count >= daily_limit:
+            stop_reason = f"Arrêt à la limite quotidienne ({daily_limit})."
+            break
 
+        try:
+            user_id = _resolve_recipient_id(cl, username)
+            cl.direct_send(message, user_ids=[int(user_id)])
+            succeeded += 1
+            already_sent.add(username)
+        except Exception as exc:
+            failed += 1
+            last_error = summarize_instagram_error(exc, context="dm_send")
 
-def _broadcast_sync(loop, job_id, job):
-    try:
-        data = {
-            "job_id": job.get("id", job_id),
-            "status": job.get("status"),
-            "total": job.get("total"),
-            "processed": job.get("processed"),
-            "succeeded": job.get("succeeded"),
-            "failed": job.get("failed"),
-            "message": job.get("message"),
-        }
-        asyncio.run_coroutine_threadsafe(broadcast_job_update(job_id, data), asyncio.get_event_loop())
-    except Exception:
-        pass
+        processed += 1
+        updated = db_proxy.update("bot_bulk_jobs", job_id, {
+            "processed": processed,
+            "succeeded": succeeded,
+            "failed": failed,
+            "message": f"{processed}/{len(usernames)} traités",
+        })
+        _broadcast_sync(job_id, updated)
+
+        if index < len(usernames) - 1:
+            time.sleep(random.randint(delay_min, delay_max))
+
+    final_job = db_proxy.select_one("bot_bulk_jobs", job_id) or {"id": job_id, "total": len(usernames), "processed": 0, "succeeded": 0, "failed": 0, "status": "running"}
+    final_status = final_job.get("status")
+
+    if final_status == "cancelled":
+        summary_status = "info"
+        summary_message = stop_reason or f"Campagne annulée — {final_job.get('processed', 0)}/{len(usernames)} traités."
+    elif final_status == "failed":
+        summary_status = "failed"
+        summary_message = stop_reason or last_error or "Campagne interrompue."
+    else:
+        final_status = "completed"
+        summary_status = "success" if (final_job.get("failed", 0) or 0) == 0 else "failed"
+        summary_message = (
+            f"Campagne terminée — {final_job.get('succeeded', 0) or 0} envoyés, "
+            f"{final_job.get('failed', 0) or 0} échecs, {skipped} doublons ignorés."
+        )
+        if stop_reason:
+            summary_message = f"{summary_message} {stop_reason}"
+
+    updated = db_proxy.update("bot_bulk_jobs", job_id, {
+        "status": final_status,
+        "message": summary_message,
+    })
+    _broadcast_sync(job_id, updated)
+    log_action("bulk_dm", str(len(usernames)), summary_status, summary_message, account_username=account_username)
 
 
 async def bulk_send_task(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True):
@@ -192,7 +247,8 @@ async def bulk_send_dm(req: BulkSendDmRequest):
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
 
-    if not req.usernames:
+    usernames = normalize_usernames(req.usernames)
+    if not usernames:
         raise HTTPException(status_code=400, detail="No usernames provided")
     if req.delay_min > req.delay_max:
         raise HTTPException(status_code=400, detail="delay_min must be <= delay_max")
@@ -200,24 +256,24 @@ async def bulk_send_dm(req: BulkSendDmRequest):
     job = db_proxy.insert("bot_bulk_jobs", {
         "job_type": "bulk_dm",
         "status": "running",
-        "total": len(req.usernames),
+        "total": len(usernames),
         "account_username": req.account_username,
         "processed": 0,
         "succeeded": 0,
         "failed": 0,
+        "message": "Campagne démarrée",
     })
 
     job_id = job.get("id")
-    log_action("bulk_dm_start", f"{len(req.usernames)} users", "queued",
-               f"Bulk DM job #{job_id} started for {len(req.usernames)} users")
+    log_action("bulk_dm", str(len(usernames)), "info", f"Campagne DM lancée pour {len(usernames)} destinataires", account_username=req.account_username)
 
-    asyncio.create_task(bulk_send_task(job_id, req.usernames, req.message, req.delay_min, req.delay_max, req.account_username))
+    asyncio.create_task(bulk_send_task(job_id, usernames, req.message, req.delay_min, req.delay_max, req.account_username, True))
 
     return {
         "success": True,
         "job_id": job_id,
-        "queued": len(req.usernames),
-        "message": f"Bulk DM job #{job_id} started — connect to /bot-api/ws/bulk-jobs/{job_id} for live updates",
+        "queued": len(usernames),
+        "message": f"Bulk DM job #{job_id} started",
     }
 
 
@@ -249,5 +305,6 @@ def cancel_bulk_job(job_id: int):
         raise HTTPException(status_code=404, detail="Job not found")
     if job.get("status") != "running":
         raise HTTPException(status_code=400, detail=f"Job is already {job.get('status')}")
-    db_proxy.update("bot_bulk_jobs", job_id, {"status": "cancelled"})
+    updated = db_proxy.update("bot_bulk_jobs", job_id, {"status": "cancelled", "message": "Campagne annulée"})
+    _broadcast_sync(job_id, updated)
     return {"success": True, "message": f"Job #{job_id} cancelled"}

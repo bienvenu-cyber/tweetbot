@@ -4,9 +4,68 @@ from pydantic import BaseModel
 from typing import Optional
 from instagram_client import account_manager
 import db_proxy
+from instagram_errors import normalize_username, summarize_instagram_error, is_rate_limited
 
 logger = logging.getLogger("instagram_bot")
 router = APIRouter()
+
+
+def _resolve_target_user(cl, account_username: str):
+    target_username = normalize_username(account_username)
+    last_error: Exception | None = None
+
+    logger.info(f"[FOLLOWERS] Looking up @{target_username} via active client")
+
+    resolvers = [
+        lambda: cl.user_info_by_username(target_username),
+        lambda: cl.user_info(cl.user_id_from_username(target_username)),
+    ]
+
+    if hasattr(cl, "user_info_by_username_v1"):
+        resolvers.insert(1, lambda: cl.user_info_by_username_v1(target_username))
+
+    for resolver in resolvers:
+        try:
+            user = resolver()
+            if user:
+                return user, target_username
+        except Exception as exc:
+            last_error = exc
+            logger.warning(f"[FOLLOWERS] Resolver failed for @{target_username}: {exc}")
+
+    if last_error:
+        raise last_error
+
+    raise HTTPException(status_code=404, detail=f"Compte Instagram @{target_username} introuvable")
+
+
+def _fetch_followers(cl, user_id: int, amount: int):
+    errors: list[Exception] = []
+
+    if hasattr(cl, "user_followers_v1"):
+        try:
+            followers_v1 = cl.user_followers_v1(user_id, amount=amount)
+            if followers_v1:
+                return list(followers_v1)
+        except Exception as exc:
+            errors.append(exc)
+            logger.warning(f"[FOLLOWERS] v1 fetch failed for user_id={user_id}: {exc}")
+
+    try:
+        followers = cl.user_followers(user_id, amount=amount)
+        if isinstance(followers, dict):
+            return list(followers.values())
+        if isinstance(followers, list):
+            return followers
+        return []
+    except Exception as exc:
+        errors.append(exc)
+        logger.warning(f"[FOLLOWERS] default fetch failed for user_id={user_id}: {exc}")
+
+    if errors:
+        raise errors[-1]
+
+    return []
 
 
 @router.get("")
@@ -14,20 +73,23 @@ def get_account(username: Optional[str] = Query(None)):
     cl = account_manager.get_client(username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
+
     try:
         user = cl.account_info()
         return {
-            "username": user.username,
-            "full_name": user.full_name,
-            "biography": user.biography or "",
-            "profile_pic_url": str(user.profile_pic_url) if user.profile_pic_url else None,
-            "followers_count": user.follower_count,
-            "following_count": user.following_count,
-            "media_count": user.media_count,
-            "is_private": user.is_private,
+            "username": getattr(user, "username", None),
+            "full_name": getattr(user, "full_name", "") or "",
+            "biography": getattr(user, "biography", "") or "",
+            "profile_pic_url": str(getattr(user, "profile_pic_url", "") or "") or None,
+            "followers_count": getattr(user, "follower_count", 0) or 0,
+            "following_count": getattr(user, "following_count", 0) or 0,
+            "media_count": getattr(user, "media_count", 0) or 0,
+            "is_private": bool(getattr(user, "is_private", False)),
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        detail = summarize_instagram_error(exc, context="account")
+        logger.error(f"[ACCOUNT] Error fetching account info: {exc}")
+        raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
 
 
 @router.get("/list")
@@ -41,43 +103,49 @@ def get_followers(
     amount: int = Query(50, ge=1, le=500),
     account_username: Optional[str] = Query(None),
 ):
-    """Fetch followers of any account. Uses the active logged-in client to make the request.
-    If account_username is provided, fetches followers of THAT account using the active client.
-    If not provided, fetches followers of the active account itself."""
-    # Always use the active (logged-in) client to make the API call
     cl = account_manager.get_client()
     if not cl:
         raise HTTPException(status_code=401, detail="No active Instagram session. Log in first.")
 
     try:
         if account_username:
-            # Fetch followers of a different account using the active client
-            target_username = account_username.strip().lstrip("@").lower()
-            logger.info(f"[FOLLOWERS] Looking up @{target_username} via active client")
-            target_user = cl.user_info_by_username(target_username)
-            user_id = target_user.pk
-            display_name = target_username
+            target_user, display_name = _resolve_target_user(cl, account_username)
         else:
-            # Fetch followers of the active account itself
-            user_info = cl.account_info()
-            user_id = user_info.pk
-            display_name = user_info.username
+            target_user = cl.account_info()
+            display_name = getattr(target_user, "username", "compte_actif")
+
+        user_id = int(getattr(target_user, "pk"))
+        expected_followers = int(getattr(target_user, "follower_count", 0) or 0)
+        is_private = bool(getattr(target_user, "is_private", False))
 
         logger.info(f"[FOLLOWERS] Fetching up to {amount} followers for @{display_name} (pk={user_id})")
-        followers = cl.user_followers(user_id, amount=amount)
+        followers = _fetch_followers(cl, user_id, amount)
+
         result = []
-        for uid, user in followers.items():
+        for user in followers:
+            pk = getattr(user, "pk", None)
             result.append({
-                "user_id": str(uid),
-                "username": user.username,
-                "full_name": user.full_name or "",
-                "profile_pic_url": str(user.profile_pic_url) if user.profile_pic_url else None,
+                "user_id": str(pk) if pk is not None else "",
+                "username": getattr(user, "username", ""),
+                "full_name": getattr(user, "full_name", "") or "",
+                "profile_pic_url": str(getattr(user, "profile_pic_url", "") or "") or None,
             })
+
+        if not result and expected_followers > 0:
+            privacy_hint = "Le compte est probablement privé ou non accessible depuis la session active." if is_private else "Instagram limite ou bloque temporairement l'accès à la liste des abonnés."
+            raise HTTPException(
+                status_code=409,
+                detail=f"Instagram n'a renvoyé aucun abonné pour @{display_name} alors que le compte affiche environ {expected_followers} abonnés. {privacy_hint}",
+            )
+
         logger.info(f"[FOLLOWERS] Got {len(result)} followers")
         return {"followers": result, "total": len(result)}
-    except Exception as e:
-        logger.error(f"[FOLLOWERS] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        detail = summarize_instagram_error(exc, context="followers")
+        logger.error(f"[FOLLOWERS] Error: {exc}")
+        raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
 
 
 class ToggleRequest(BaseModel):

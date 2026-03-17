@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { BulkJobTracker } from "@/components/bulk-job-tracker";
 
 const singleDmSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -44,6 +45,7 @@ export default function DmManager() {
     requestId: number;
   } | null>(null);
   const [skipAlreadySent, setSkipAlreadySent] = useState(true);
+  const [currentBulkJobId, setCurrentBulkJobId] = useState<number | null>(null);
 
   const { data: followersData, isLoading: followersLoading, error: followersError } = useFollowers(
     followersRequest?.amount ?? followerCount,
@@ -87,7 +89,6 @@ export default function DmManager() {
 
   const onBulkSubmit = (data: z.infer<typeof bulkDmSchema>) => {
     let usernameArray: string[];
-    const sourceAccountUsername = bulkSource === "followers" ? followersRequest?.accountUsername : undefined;
 
     if (bulkSource === "followers") {
       if (!followersData?.followers?.length) {
@@ -109,10 +110,10 @@ export default function DmManager() {
       message: data.message,
       delay_min: data.delay_min,
       delay_max: data.delay_max,
-      account_username: sourceAccountUsername,
       skip_already_sent: skipAlreadySent,
     }, {
       onSuccess: (res) => {
+        setCurrentBulkJobId(res.job_id ?? null);
         toast({ title: "Campagne lancée", description: `${res.queued} messages en file d'attente.` });
         bulkForm.reset();
       },
@@ -175,7 +176,9 @@ export default function DmManager() {
                   <CardDescription>Envoie des messages à plusieurs utilisateurs avec des délais sûrs. Les doublons sont automatiquement ignorés.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={bulkForm.handleSubmit(onBulkSubmit)} className="space-y-4">
+                  <div className="space-y-4">
+                    <BulkJobTracker jobId={currentBulkJobId} onDone={() => setCurrentBulkJobId(null)} />
+                    <form onSubmit={bulkForm.handleSubmit(onBulkSubmit)} className="space-y-4">
                     {/* Source selector */}
                     <div className="space-y-3">
                       <Label className="text-base font-semibold">Source des destinataires</Label>
@@ -351,7 +354,8 @@ export default function DmManager() {
                         </>
                       )}
                     </Button>
-                  </form>
+                    </form>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -397,7 +401,7 @@ export default function DmManager() {
                   {threadsError ? (
                     <>
                       <p className="text-sm font-medium">Accès aux DMs indisponible</p>
-                      <p className="text-xs mt-1">Instagram bloque l'accès à la boîte de réception depuis le serveur. Les envois de DM fonctionnent quand même.</p>
+                      <p className="text-xs mt-1">Instagram bloque temporairement l'accès à la boîte de réception depuis le serveur. La session n'est pas forcément expirée.</p>
                     </>
                   ) : (
                     <>

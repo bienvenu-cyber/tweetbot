@@ -77,7 +77,7 @@ export default function Dashboard() {
               <div className="text-center py-8 space-y-3">
                 <AlertCircle className="w-10 h-10 mx-auto text-muted-foreground/60" />
                 <p className="text-sm font-medium text-foreground">Infos du compte indisponibles</p>
-                <p className="text-xs text-muted-foreground">Instagram bloque temporairement certaines requêtes depuis le serveur. La session est probablement toujours active — les envois de DM et autres actions fonctionnent quand même.</p>
+                <p className="text-xs text-muted-foreground">Instagram bloque temporairement certaines requêtes depuis le serveur. La session est probablement toujours active, mais certaines actions peuvent être limitées.</p>
               </div>
             ) : account ? (
               <div className="text-center space-y-4">
