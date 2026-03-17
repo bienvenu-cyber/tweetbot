@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, MessageSquare, Send, CalendarPlus, CalendarClock,
-  ListOrdered, Activity, Settings, LogOut, Loader2, Bot, ChevronDown, Trash2, Cookie
+  ListOrdered, Activity, Settings, LogOut, Loader2, Bot, ChevronDown, Trash2, Cookie, BookOpen
 } from "lucide-react";
 import { useAuthStatus, useLogout, useAccount } from "@/hooks/use-auth";
 import { useAccounts } from "@/hooks/use-accounts";
