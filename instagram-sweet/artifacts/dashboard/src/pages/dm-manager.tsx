@@ -75,12 +75,23 @@ export default function DmManager() {
     });
   };
 
+  const normalizedFollowersAccountUsername = followersAccountUsernameInput.trim().replace(/^@/, '').toLowerCase();
+
+  const handleLoadFollowers = () => {
+    setFollowersRequest({
+      amount: followerCount,
+      accountUsername: normalizedFollowersAccountUsername || undefined,
+      requestId: (followersRequest?.requestId ?? 0) + 1,
+    });
+  };
+
   const onBulkSubmit = (data: z.infer<typeof bulkDmSchema>) => {
     let usernameArray: string[];
+    const sourceAccountUsername = bulkSource === "followers" ? followersRequest?.accountUsername : undefined;
 
     if (bulkSource === "followers") {
       if (!followersData?.followers?.length) {
-        toast({ title: "Error", description: "Charge d'abord les abonnés", variant: "destructive" });
+        toast({ title: "Error", description: "Charge d'abord les abonnés du compte source", variant: "destructive" });
         return;
       }
       usernameArray = followersData.followers.map(f => f.username);
@@ -98,6 +109,7 @@ export default function DmManager() {
       message: data.message,
       delay_min: data.delay_min,
       delay_max: data.delay_max,
+      account_username: sourceAccountUsername,
       skip_already_sent: skipAlreadySent,
     }, {
       onSuccess: (res) => {
