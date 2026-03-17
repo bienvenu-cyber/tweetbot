@@ -17,6 +17,7 @@ import Schedule from "@/pages/schedule";
 import Queue from "@/pages/queue";
 import Logs from "@/pages/logs";
 import Settings from "@/pages/settings";
+import Guide from "@/pages/guide";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -69,6 +70,7 @@ function Router() {
       <Route path="/queue" component={() => <ProtectedRoute component={Queue} />} />
       <Route path="/logs" component={() => <ProtectedRoute component={Logs} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={Settings} />} />
+      <Route path="/guide" component={() => <ProtectedRoute component={Guide} />} />
       <Route component={NotFound} />
     </Switch>
   );

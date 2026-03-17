@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, MessageSquare, Send, CalendarPlus, CalendarClock,
-  ListOrdered, Activity, Settings, LogOut, Loader2, Bot, ChevronDown, Trash2, Cookie
+  ListOrdered, Activity, Settings, LogOut, Loader2, Bot, ChevronDown, Trash2, Cookie, BookOpen
 } from "lucide-react";
 import { useAuthStatus, useLogout, useAccount } from "@/hooks/use-auth";
 import { useAccounts } from "@/hooks/use-accounts";
@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/queue", label: "Action Queue", icon: ListOrdered },
   { href: "/logs", label: "Activity Logs", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/guide", label: "Guide Admin", icon: BookOpen },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
