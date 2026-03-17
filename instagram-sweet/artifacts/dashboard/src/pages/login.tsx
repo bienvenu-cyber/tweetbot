@@ -46,6 +46,7 @@ export default function Login() {
   const [verifyCode, setVerifyCode] = useState("");
   const [codeSubmitting, setCodeSubmitting] = useState(false);
 
+  const queryClient = useQueryClient();
   const { data: auth, isLoading: checkingAuth } = useAuthStatus();
   const loginMutation = useLogin();
   const { toast } = useToast();
