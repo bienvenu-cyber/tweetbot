@@ -1,14 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DmThreadList, SendDmRequest, BulkSendDmRequest, BulkSendResponse, StatusMessage } from "@workspace/api-client-react";
-import { BOT_API_BASE } from "@/config";
-
-const BASE_URL = BOT_API_BASE;
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 export function useDmThreads(amount: number = 20) {
   return useQuery({
     queryKey: ["dm-threads", amount],
     queryFn: async (): Promise<DmThreadList> => {
-      const res = await fetch(`${BASE_URL}/dm/threads?amount=${amount}`);
+      const res = await apiFetch(`${BOT_API_BASE}/dm/threads?amount=${amount}`);
       if (!res.ok) throw new Error("Failed to fetch threads");
       return res.json();
     },
@@ -19,7 +17,7 @@ export function useSendDm() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: SendDmRequest): Promise<StatusMessage> => {
-      const res = await fetch(`${BASE_URL}/dm/send`, {
+      const res = await apiFetch(`${BOT_API_BASE}/dm/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -36,7 +34,7 @@ export function useBulkSendDm() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: BulkSendDmRequest): Promise<BulkSendResponse> => {
-      const res = await fetch(`${BASE_URL}/dm/bulk-send`, {
+      const res = await apiFetch(`${BOT_API_BASE}/dm/bulk-send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
