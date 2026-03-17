@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { getBotWsUrl } from "@/config";
 
 export interface BulkJobProgress {
   job_id: number;
@@ -24,8 +25,7 @@ export function useBulkJobWs(jobId: number | null) {
   useEffect(() => {
     if (!jobId) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/bot-api/ws/bulk-jobs/${jobId}`;
+    const wsUrl = getBotWsUrl(`/ws/bulk-jobs/${jobId}`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

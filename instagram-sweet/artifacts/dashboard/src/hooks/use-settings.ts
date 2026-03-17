@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-const BASE_URL = "/api/bot-api";
+import { BOT_API_BASE } from "@/config";
+
+const BASE_URL = BOT_API_BASE;
 
 export interface BotSettings {
   dm_daily_limit: number;
