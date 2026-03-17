@@ -73,6 +73,12 @@ export default function Dashboard() {
                   <div className="h-3 bg-secondary rounded w-1/3"></div>
                 </div>
               </div>
+            ) : accountError ? (
+              <div className="text-center py-8 space-y-3">
+                <AlertCircle className="w-10 h-10 mx-auto text-destructive/60" />
+                <p className="text-sm font-medium text-destructive">Session Instagram expirée</p>
+                <p className="text-xs text-muted-foreground">Ré-importe tes cookies depuis le sélecteur de comptes pour reconnecter la session.</p>
+              </div>
             ) : account ? (
               <div className="text-center space-y-4">
                 <div className="relative w-24 h-24 mx-auto">

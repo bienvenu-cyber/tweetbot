@@ -213,8 +213,9 @@ export default function DmManager() {
                 </div>
               ) : (
                 <div className="p-8 text-center text-muted-foreground">
-                  <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No recent threads found.</p>
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-destructive/50" />
+                  <p className="text-sm">Impossible de charger la boîte de réception.</p>
+                  <p className="text-xs mt-1">La session Instagram peut être expirée — ré-importe tes cookies.</p>
                 </div>
               )}
             </ScrollArea>
