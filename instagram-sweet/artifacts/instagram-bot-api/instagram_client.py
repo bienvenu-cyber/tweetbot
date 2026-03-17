@@ -115,9 +115,18 @@ class MultiAccountManager:
             settings = json.loads(account["session_data"])
             cl = _create_client()
             cl.set_settings(settings)
-            cl.login(username, "")
-            cl.get_timeline_feed()
+            # Don't call cl.login() — just inject session and verify with a light API call
+            cl.init()
+            user_info = cl.account_info()
+            logger.info(f"[SESSION] Verified session for @{username} (uid={user_info.pk})")
             self._clients[username.lower()] = cl
+            # Re-save refreshed session data
+            refreshed = json.dumps(cl.get_settings(), default=str)
+            db_proxy.update("bot_accounts", account["id"], {
+                "session_data": refreshed,
+                "is_logged_in": True,
+                "last_login_at": datetime.now(timezone.utc).isoformat(),
+            })
             logger.info(f"[SESSION] Restored session for @{username}")
             return True
         except Exception as e:

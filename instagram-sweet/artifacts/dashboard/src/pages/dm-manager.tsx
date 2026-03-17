@@ -44,9 +44,11 @@ export default function DmManager() {
   });
 
   const onSingleSubmit = (data: z.infer<typeof singleDmSchema>) => {
-    sendDm.mutate(data, {
+    // Strip @ and whitespace from username
+    const cleanUsername = data.username.trim().replace(/^@/, '');
+    sendDm.mutate({ ...data, username: cleanUsername }, {
       onSuccess: () => {
-        toast({ title: "Message Sent", description: `Successfully sent to ${data.username}` });
+        toast({ title: "Message Sent", description: `Successfully sent to @${cleanUsername}` });
         singleForm.reset();
       },
       onError: (err) => {
@@ -107,7 +109,8 @@ export default function DmManager() {
                   <form onSubmit={singleForm.handleSubmit(onSingleSubmit)} className="space-y-4">
                     <div className="space-y-2">
                       <Label>Target Username</Label>
-                      <Input placeholder="@username" {...singleForm.register("username")} className="bg-background/50" />
+                      <Input placeholder="bv_4real (sans @)" {...singleForm.register("username")} className="bg-background/50" />
+                      <p className="text-xs text-muted-foreground">Le nom d'utilisateur Instagram, sans le @. Ex: <code className="text-primary">bv_4real</code></p>
                     </div>
                     <div className="space-y-2">
                       <Label>Message</Label>
@@ -210,8 +213,9 @@ export default function DmManager() {
                 </div>
               ) : (
                 <div className="p-8 text-center text-muted-foreground">
-                  <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No recent threads found.</p>
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-destructive/50" />
+                  <p className="text-sm">Impossible de charger la boîte de réception.</p>
+                  <p className="text-xs mt-1">La session Instagram peut être expirée — ré-importe tes cookies.</p>
                 </div>
               )}
             </ScrollArea>
