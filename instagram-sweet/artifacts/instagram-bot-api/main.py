@@ -66,6 +66,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[SCHEDULER] Failed to start: {e}")
 
+    # Resume interrupted bulk jobs
+    try:
+        from routers.dm import resume_interrupted_jobs
+        resume_interrupted_jobs()
+    except Exception as e:
+        logger.error(f"[RESUME] Failed: {e}")
+
     yield
     logger.info("Instagram Bot API shutting down...")
 
