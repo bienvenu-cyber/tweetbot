@@ -79,15 +79,19 @@ export default function Login() {
   console.log("[LOGIN] Not logged in, showing login form. Auth data:", auth);
 
   const handleLoginResult = (res: any, username: string, password: string) => {
+    console.log("[LOGIN] handleLoginResult:", JSON.stringify(res));
     if (res.success) {
+      console.log("[LOGIN] Login SUCCESS → redirecting");
       toast({ title: "✓ Connecté !", description: `Connecté en tant que @${res.username}` });
       setLocation("/");
       return;
     }
     if (res.challenge) {
+      console.log("[LOGIN] Challenge required:", { type: res.challenge_type, geo: res.geo_blocked });
       setChallenge({ active: true, type: res.challenge_type || "approve", geoBlocked: res.geo_blocked ?? true, username, password });
       return;
     }
+    console.log("[LOGIN] Login FAILED:", res.message);
     toast({ title: "Connexion échouée", description: res.message, variant: "destructive" });
   };
 
