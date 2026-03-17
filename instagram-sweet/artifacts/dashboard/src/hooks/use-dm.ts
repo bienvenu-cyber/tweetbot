@@ -22,11 +22,24 @@ export interface FollowerInfo {
   profile_pic_url: string | null;
 }
 
-export function useFollowers(amount: number = 100, enabled: boolean = false) {
+export function useFollowers(
+  amount: number = 100,
+  enabled: boolean = false,
+  accountUsername?: string,
+  requestId: number = 0,
+) {
+  const normalizedAccountUsername = accountUsername?.trim().replace(/^@/, "").toLowerCase();
+
   return useQuery({
-    queryKey: ["followers", amount],
+    queryKey: ["followers", amount, normalizedAccountUsername ?? "default", requestId],
     queryFn: async (): Promise<{ followers: FollowerInfo[]; total: number }> => {
-      const res = await apiFetch(`${BOT_API_BASE}/account/followers?amount=${amount}`, {}, 60000);
+      const params = new URLSearchParams({ amount: String(amount) });
+
+      if (normalizedAccountUsername) {
+        params.set("account_username", normalizedAccountUsername);
+      }
+
+      const res = await apiFetch(`${BOT_API_BASE}/account/followers?${params.toString()}`, {}, 60000);
       if (!res.ok) throw new Error("Failed to fetch followers");
       return res.json();
     },

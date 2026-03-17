@@ -36,11 +36,21 @@ export default function DmManager() {
   // Bulk campaign state
   const [bulkSource, setBulkSource] = useState<"manual" | "followers">("followers");
   const [manualUsernames, setManualUsernames] = useState("");
-  const [loadFollowers, setLoadFollowers] = useState(false);
   const [followerCount, setFollowerCount] = useState(100);
+  const [followersAccountUsernameInput, setFollowersAccountUsernameInput] = useState("");
+  const [followersRequest, setFollowersRequest] = useState<{
+    amount: number;
+    accountUsername?: string;
+    requestId: number;
+  } | null>(null);
   const [skipAlreadySent, setSkipAlreadySent] = useState(true);
 
-  const { data: followersData, isLoading: followersLoading, error: followersError } = useFollowers(followerCount, loadFollowers);
+  const { data: followersData, isLoading: followersLoading, error: followersError } = useFollowers(
+    followersRequest?.amount ?? followerCount,
+    Boolean(followersRequest),
+    followersRequest?.accountUsername,
+    followersRequest?.requestId ?? 0,
+  );
 
   const singleForm = useForm<z.infer<typeof singleDmSchema>>({
     resolver: zodResolver(singleDmSchema),
@@ -65,12 +75,23 @@ export default function DmManager() {
     });
   };
 
+  const normalizedFollowersAccountUsername = followersAccountUsernameInput.trim().replace(/^@/, '').toLowerCase();
+
+  const handleLoadFollowers = () => {
+    setFollowersRequest({
+      amount: followerCount,
+      accountUsername: normalizedFollowersAccountUsername || undefined,
+      requestId: (followersRequest?.requestId ?? 0) + 1,
+    });
+  };
+
   const onBulkSubmit = (data: z.infer<typeof bulkDmSchema>) => {
     let usernameArray: string[];
+    const sourceAccountUsername = bulkSource === "followers" ? followersRequest?.accountUsername : undefined;
 
     if (bulkSource === "followers") {
       if (!followersData?.followers?.length) {
-        toast({ title: "Error", description: "Charge d'abord les abonnés", variant: "destructive" });
+        toast({ title: "Error", description: "Charge d'abord les abonnés du compte source", variant: "destructive" });
         return;
       }
       usernameArray = followersData.followers.map(f => f.username);
@@ -88,6 +109,7 @@ export default function DmManager() {
       message: data.message,
       delay_min: data.delay_min,
       delay_max: data.delay_max,
+      account_username: sourceAccountUsername,
       skip_already_sent: skipAlreadySent,
     }, {
       onSuccess: (res) => {
@@ -182,24 +204,39 @@ export default function DmManager() {
                     {/* Followers source */}
                     {bulkSource === "followers" && (
                       <div className="space-y-3 bg-secondary/30 p-4 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="space-y-1 flex-1">
-                            <Label>Nombre d'abonnés à charger</Label>
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_auto] md:items-end">
+                          <div className="space-y-1">
+                            <Label>Username du compte source</Label>
+                            <Input
+                              type="text"
+                              placeholder="compte_test"
+                              value={followersAccountUsernameInput}
+                              onChange={(e) => setFollowersAccountUsernameInput(e.target.value)}
+                              className="bg-background/50"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Vide = compte Instagram actif par défaut.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label>Nombre d'abonnés</Label>
                             <Input
                               type="number"
                               min={10}
                               max={500}
                               value={followerCount}
                               onChange={(e) => setFollowerCount(Number(e.target.value))}
-                              className="bg-background/50 w-32"
+                              className="bg-background/50"
                             />
                           </div>
+
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setLoadFollowers(true)}
+                            onClick={handleLoadFollowers}
                             disabled={followersLoading}
-                            className="mt-5"
+                            className="md:self-end"
                           >
                             {followersLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
                             {followersLoading ? "Chargement..." : "Charger"}
@@ -215,8 +252,11 @@ export default function DmManager() {
 
                         {followersData && (
                           <div className="flex items-center gap-2 text-sm">
-                            <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            <span className="text-foreground">{followersData.total} abonnés chargés</span>
+                            <CheckCircle2 className="w-4 h-4 text-primary" />
+                            <span className="text-foreground">
+                              {followersData.total} abonnés chargés
+                              {followersRequest?.accountUsername ? ` depuis @${followersRequest.accountUsername}` : ""}
+                            </span>
                           </div>
                         )}
 
