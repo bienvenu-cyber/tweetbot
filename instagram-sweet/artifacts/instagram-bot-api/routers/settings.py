@@ -1,9 +1,8 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy.orm import Session
-from database import get_db, BotSettingsModel
+import db_proxy
 from instagram_client import set_global_proxy, get_global_proxy
 
 logger = logging.getLogger("instagram_bot")
@@ -23,65 +22,64 @@ class BotSettings(BaseModel):
     proxy_url: Optional[str] = None
 
 
-def _settings_to_dict(settings: BotSettingsModel) -> dict:
+def _get_or_create_settings() -> dict:
+    row = db_proxy.select_first("bot_settings", {"id": "1"})
+    if not row:
+        row = db_proxy.insert("bot_settings", {"id": 1})
+    return row
+
+
+def _settings_to_dict(s: dict) -> dict:
     return {
-        "dm_daily_limit": settings.dm_daily_limit,
-        "dm_delay_min": settings.dm_delay_min,
-        "dm_delay_max": settings.dm_delay_max,
-        "comment_daily_limit": settings.comment_daily_limit,
-        "comment_delay_min": settings.comment_delay_min,
-        "comment_delay_max": settings.comment_delay_max,
-        "post_daily_limit": settings.post_daily_limit,
-        "auto_dm_enabled": settings.auto_dm_enabled,
-        "auto_comment_enabled": settings.auto_comment_enabled,
-        "proxy_url": settings.proxy_url or "",
+        "dm_daily_limit": s.get("dm_daily_limit", 50),
+        "dm_delay_min": s.get("dm_delay_min", 30),
+        "dm_delay_max": s.get("dm_delay_max", 120),
+        "comment_daily_limit": s.get("comment_daily_limit", 30),
+        "comment_delay_min": s.get("comment_delay_min", 20),
+        "comment_delay_max": s.get("comment_delay_max", 90),
+        "post_daily_limit": s.get("post_daily_limit", 3),
+        "auto_dm_enabled": s.get("auto_dm_enabled", False),
+        "auto_comment_enabled": s.get("auto_comment_enabled", False),
+        "proxy_url": s.get("proxy_url") or "",
         "proxy_active": bool(get_global_proxy()),
     }
 
 
 @router.get("")
-def get_settings(db: Session = Depends(get_db)):
-    settings = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
-    if not settings:
-        settings = BotSettingsModel(id=1)
-        db.add(settings)
-        db.commit()
-        db.refresh(settings)
-    if settings.proxy_url:
-        set_global_proxy(settings.proxy_url)
+def get_settings():
+    settings = _get_or_create_settings()
+    if settings.get("proxy_url"):
+        set_global_proxy(settings["proxy_url"])
     return _settings_to_dict(settings)
 
 
 @router.put("")
-def update_settings(body: BotSettings, db: Session = Depends(get_db)):
-    settings = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
-    if not settings:
-        settings = BotSettingsModel(id=1)
-        db.add(settings)
+def update_settings(body: BotSettings):
+    _get_or_create_settings()  # ensure row exists
 
-    settings.dm_daily_limit = body.dm_daily_limit
-    settings.dm_delay_min = body.dm_delay_min
-    settings.dm_delay_max = body.dm_delay_max
-    settings.comment_daily_limit = body.comment_daily_limit
-    settings.comment_delay_min = body.comment_delay_min
-    settings.comment_delay_max = body.comment_delay_max
-    settings.post_daily_limit = body.post_daily_limit
-    settings.auto_dm_enabled = body.auto_dm_enabled
-    settings.auto_comment_enabled = body.auto_comment_enabled
-    settings.proxy_url = body.proxy_url or None
+    fields = {
+        "dm_daily_limit": body.dm_daily_limit,
+        "dm_delay_min": body.dm_delay_min,
+        "dm_delay_max": body.dm_delay_max,
+        "comment_daily_limit": body.comment_daily_limit,
+        "comment_delay_min": body.comment_delay_min,
+        "comment_delay_max": body.comment_delay_max,
+        "post_daily_limit": body.post_daily_limit,
+        "auto_dm_enabled": body.auto_dm_enabled,
+        "auto_comment_enabled": body.auto_comment_enabled,
+        "proxy_url": body.proxy_url or None,
+    }
 
-    db.commit()
-    db.refresh(settings)
+    updated = db_proxy.update("bot_settings", 1, fields)
 
-    set_global_proxy(settings.proxy_url)
-    logger.info(f"[SETTINGS] Updated — proxy: {'set' if settings.proxy_url else 'none'}")
+    set_global_proxy(body.proxy_url)
+    logger.info(f"[SETTINGS] Updated — proxy: {'set' if body.proxy_url else 'none'}")
 
-    return _settings_to_dict(settings)
+    return _settings_to_dict(updated if updated else fields)
 
 
 @router.post("/proxy/test")
-def test_proxy(db: Session = Depends(get_db)):
-    """Test the currently configured proxy by making a simple request."""
+def test_proxy():
     import requests
     proxy = get_global_proxy()
     if not proxy:

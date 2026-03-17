@@ -2,13 +2,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from instagram_client import account_manager
+import db_proxy
 
 router = APIRouter()
 
 
-# ---------------------------------------------------------------------------
-# GET /bot-api/account — Single account info (existing)
-# ---------------------------------------------------------------------------
 @router.get("")
 def get_account(username: Optional[str] = Query(None)):
     cl = account_manager.get_client(username)
@@ -30,53 +28,35 @@ def get_account(username: Optional[str] = Query(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ---------------------------------------------------------------------------
-# GET /bot-api/account/list — All accounts with status
-# ---------------------------------------------------------------------------
 @router.get("/list")
 def list_accounts():
-    """Return all bot accounts with their connection status."""
     accounts = account_manager.list_accounts()
     return {"accounts": accounts, "total": len(accounts)}
 
 
-# ---------------------------------------------------------------------------
-# PATCH /bot-api/account/{username}/toggle — Enable/disable an account
-# ---------------------------------------------------------------------------
 class ToggleRequest(BaseModel):
     is_active: bool
 
 
 @router.patch("/{username}/toggle")
 def toggle_account(username: str, req: ToggleRequest):
-    """Toggle an account's active status. Inactive accounts are skipped by round-robin."""
-    from database import SessionLocal, BotAccount
-
     username = username.strip().lstrip("@").lower()
-    db = SessionLocal()
-    try:
-        account = db.query(BotAccount).filter(BotAccount.username == username).first()
-        if not account:
-            raise HTTPException(status_code=404, detail=f"Account @{username} not found")
 
-        account.is_active = req.is_active
-        db.commit()
+    account = db_proxy.select_first("bot_accounts", {"username": username})
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account @{username} not found")
 
-        return {
-            "success": True,
-            "message": f"@{username} {'activé' if req.is_active else 'désactivé'}",
-            "username": username,
-            "is_active": req.is_active,
-        }
-    finally:
-        db.close()
+    db_proxy.update("bot_accounts", account["id"], {"is_active": req.is_active})
+
+    return {
+        "success": True,
+        "message": f"@{username} {'activé' if req.is_active else 'désactivé'}",
+        "username": username,
+        "is_active": req.is_active,
+    }
 
 
-# ---------------------------------------------------------------------------
-# DELETE /bot-api/account/{username} — Remove an account completely
-# ---------------------------------------------------------------------------
 @router.delete("/{username}")
 def remove_account(username: str):
-    """Completely remove an account (logout + delete from DB)."""
     username = username.strip().lstrip("@").lower()
     return account_manager.remove_account(username)

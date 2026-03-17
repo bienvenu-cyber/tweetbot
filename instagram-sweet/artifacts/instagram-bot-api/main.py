@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("instagram_bot")
 
-from database import check_db, SessionLocal, BotSettingsModel
+import db_proxy
 from instagram_client import set_global_proxy, account_manager
 from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
@@ -32,22 +32,20 @@ ALLOWED_ORIGINS = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("Instagram Bot API v3.0 (multi-account) starting up...")
+    logger.info("Instagram Bot API v3.1 (HTTP proxy mode) starting up...")
     logger.info("=" * 60)
 
     try:
-        check_db()
-        logger.info("[DB] Database connection verified")
+        db_proxy.check_proxy()
+        logger.info("[DB] Database proxy connection verified")
     except Exception as e:
-        logger.error(f"[DB] Database connection failed: {e}")
+        logger.error(f"[DB] Database proxy connection failed: {e}")
 
     # Load proxy from DB
     try:
-        db = SessionLocal()
-        s = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
-        if s and s.proxy_url:
-            set_global_proxy(s.proxy_url)
-        db.close()
+        settings_row = db_proxy.select_first("bot_settings", {"id": "1"})
+        if settings_row and settings_row.get("proxy_url"):
+            set_global_proxy(settings_row["proxy_url"])
     except Exception as e:
         logger.error(f"[STARTUP] Failed to load proxy: {e}")
 
@@ -72,7 +70,7 @@ async def lifespan(app: FastAPI):
     logger.info("Instagram Bot API shutting down...")
 
 
-app = FastAPI(title="Instagram Bot API", version="3.0.0", lifespan=lifespan)
+app = FastAPI(title="Instagram Bot API", version="3.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -116,12 +114,9 @@ app.include_router(ws_router, prefix="/bot-api", tags=["websocket"])
 
 @app.get("/bot-api/health")
 def health():
-    from database import SessionLocal, LogEntry
     from instagram_client import get_global_proxy
     try:
-        db = SessionLocal()
-        count = db.query(LogEntry).count()
-        db.close()
+        db_proxy.select("bot_logs", limit=1)
         db_status = "connected"
     except Exception as e:
         db_status = f"error: {e}"
