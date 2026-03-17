@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,6 +46,7 @@ export default function Login() {
   const [verifyCode, setVerifyCode] = useState("");
   const [codeSubmitting, setCodeSubmitting] = useState(false);
 
+  const queryClient = useQueryClient();
   const { data: auth, isLoading: checkingAuth } = useAuthStatus();
   const loginMutation = useLogin();
   const { toast } = useToast();
@@ -111,6 +113,8 @@ export default function Login() {
 
       const data = await res.json();
       if (data.success) {
+        await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+        await queryClient.invalidateQueries({ queryKey: ["account-info"] });
         toast({ title: "✓ Connecté !", description: `@${data.username}` });
         setLocation("/");
       } else {
@@ -145,6 +149,8 @@ export default function Login() {
 
       const data = await res.json();
       if (data.success) {
+        await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+        await queryClient.invalidateQueries({ queryKey: ["account-info"] });
         toast({ title: "✓ Connecté via cookies !", description: data.message });
         setLocation("/");
       } else {
