@@ -31,12 +31,19 @@ export async function apiFetch(
     headers["X-API-Key"] = BOT_API_KEY;
   }
 
+  console.log(`[API] ${options.method || "GET"} ${url} (timeout: ${timeoutMs}ms, hasApiKey: ${!!BOT_API_KEY})`);
+
   try {
-    return await fetch(url, {
+    const res = await fetch(url, {
       ...options,
       headers,
       signal: controller.signal,
     });
+    console.log(`[API] Response: ${res.status} ${res.statusText} for ${url}`);
+    return res;
+  } catch (err: any) {
+    console.error(`[API] FETCH ERROR for ${url}:`, err.name, err.message);
+    throw err;
   } finally {
     clearTimeout(timer);
   }
