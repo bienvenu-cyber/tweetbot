@@ -44,9 +44,11 @@ export default function DmManager() {
   });
 
   const onSingleSubmit = (data: z.infer<typeof singleDmSchema>) => {
-    sendDm.mutate(data, {
+    // Strip @ and whitespace from username
+    const cleanUsername = data.username.trim().replace(/^@/, '');
+    sendDm.mutate({ ...data, username: cleanUsername }, {
       onSuccess: () => {
-        toast({ title: "Message Sent", description: `Successfully sent to ${data.username}` });
+        toast({ title: "Message Sent", description: `Successfully sent to @${cleanUsername}` });
         singleForm.reset();
       },
       onError: (err) => {
