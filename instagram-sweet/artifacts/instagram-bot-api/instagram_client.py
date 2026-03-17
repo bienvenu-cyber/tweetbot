@@ -1,7 +1,6 @@
 """
-Multi-account Instagram client manager.
-Replaces the old singleton `ig_manager` with a manager that handles N accounts.
-Passwords are encrypted at rest in the DB. Sessions are persisted in DB.
+Multi-account Instagram client manager — HTTP proxy version.
+All DB operations go through db_proxy instead of SQLAlchemy.
 """
 
 import json
@@ -16,6 +15,8 @@ from instagrapi.exceptions import (
     ReloginAttemptExceeded,
 )
 from datetime import datetime, timezone
+
+import db_proxy
 
 logger = logging.getLogger("instagram_bot")
 
@@ -53,89 +54,68 @@ def _create_client() -> Client:
 
 
 class MultiAccountManager:
-    """Manages multiple Instagram accounts with in-memory clients + DB persistence."""
-
     def __init__(self):
-        self._clients: Dict[str, Client] = {}  # username -> Client
-        self._pending_challenges: Dict[str, Client] = {}  # username -> Client (during challenge)
+        self._clients: Dict[str, Client] = {}
+        self._pending_challenges: Dict[str, Client] = {}
 
-    # ---- DB helpers ----
+    # ---- DB helpers via proxy ----
 
-    def _get_account(self, username: str):
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            return db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
-        finally:
-            db.close()
+    def _get_account(self, username: str) -> Optional[dict]:
+        return db_proxy.select_first("bot_accounts", {"username": username.lower()})
 
     def _save_account(self, username: str, client: Client, password: Optional[str] = None):
-        from database import SessionLocal, BotAccount
         from encryption import encrypt_password
-        db = SessionLocal()
-        try:
-            username = username.lower()
-            account = db.query(BotAccount).filter(BotAccount.username == username).first()
-            session_json = json.dumps(client.get_settings(), default=str)
+        username = username.lower()
+        session_json = json.dumps(client.get_settings(), default=str)
+        account = self._get_account(username)
 
-            if account:
-                account.session_data = session_json
-                account.is_logged_in = True
-                account.last_login_at = datetime.now(timezone.utc)
-                if password:
-                    account.encrypted_password = encrypt_password(password)
-            else:
-                account = BotAccount(
-                    username=username,
-                    encrypted_password=encrypt_password(password) if password else None,
-                    session_data=session_json,
-                    is_logged_in=True,
-                    last_login_at=datetime.now(timezone.utc),
-                )
-                db.add(account)
-            db.commit()
-            logger.info(f"[ACCOUNT] Saved account {username}")
-        finally:
-            db.close()
+        if account:
+            fields = {
+                "session_data": session_json,
+                "is_logged_in": True,
+                "last_login_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if password:
+                fields["encrypted_password"] = encrypt_password(password)
+            db_proxy.update("bot_accounts", account["id"], fields)
+        else:
+            row = {
+                "username": username,
+                "encrypted_password": encrypt_password(password) if password else None,
+                "session_data": session_json,
+                "is_logged_in": True,
+                "last_login_at": datetime.now(timezone.utc).isoformat(),
+                "is_active": True,
+            }
+            db_proxy.insert("bot_accounts", row)
+        logger.info(f"[ACCOUNT] Saved account {username}")
 
     def _mark_logged_out(self, username: str):
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
-            if account:
-                account.is_logged_in = False
-                account.session_data = None
-                db.commit()
-        finally:
-            db.close()
+        account = self._get_account(username)
+        if account:
+            db_proxy.update("bot_accounts", account["id"], {
+                "is_logged_in": False,
+                "session_data": None,
+            })
 
     def _update_last_action(self, username: str):
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
-            if account:
-                account.last_action_at = datetime.now(timezone.utc)
-                db.commit()
-        finally:
-            db.close()
+        account = self._get_account(username)
+        if account:
+            db_proxy.update("bot_accounts", account["id"], {
+                "last_action_at": datetime.now(timezone.utc).isoformat(),
+            })
 
     # ---- Session restore ----
 
     def _restore_session(self, username: str) -> bool:
-        """Try to restore a session from DB data."""
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
+        account = self._get_account(username)
+        if not account or not account.get("session_data"):
+            return False
         try:
-            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
-            if not account or not account.session_data:
-                return False
-            settings = json.loads(account.session_data)
+            settings = json.loads(account["session_data"])
             cl = _create_client()
             cl.set_settings(settings)
             cl.login(username, "")
-            # Verify session is alive
             cl.get_timeline_feed()
             self._clients[username.lower()] = cl
             logger.info(f"[SESSION] Restored session for @{username}")
@@ -143,113 +123,84 @@ class MultiAccountManager:
         except Exception as e:
             logger.warning(f"[SESSION] Restore failed for @{username}: {e}")
             return False
-        finally:
-            db.close()
 
     def _auto_reconnect(self, username: str) -> bool:
-        """Try to reconnect using encrypted password from DB."""
-        from database import SessionLocal, BotAccount
         from encryption import decrypt_password
-        db = SessionLocal()
+        account = self._get_account(username)
+        if not account or not account.get("encrypted_password"):
+            logger.warning(f"[RECONNECT] No password stored for @{username}")
+            return False
         try:
-            account = db.query(BotAccount).filter(BotAccount.username == username.lower()).first()
-            if not account or not account.encrypted_password:
-                logger.warning(f"[RECONNECT] No password stored for @{username}")
-                return False
-            password = decrypt_password(account.encrypted_password)
+            password = decrypt_password(account["encrypted_password"])
             cl = _create_client()
             cl.login(username, password)
             self._clients[username.lower()] = cl
-            # Update session
-            account.session_data = json.dumps(cl.get_settings(), default=str)
-            account.is_logged_in = True
-            account.last_login_at = datetime.now(timezone.utc)
-            db.commit()
+            db_proxy.update("bot_accounts", account["id"], {
+                "session_data": json.dumps(cl.get_settings(), default=str),
+                "is_logged_in": True,
+                "last_login_at": datetime.now(timezone.utc).isoformat(),
+            })
             logger.info(f"[RECONNECT] Auto-reconnected @{username}")
             return True
         except Exception as e:
             logger.error(f"[RECONNECT] Failed for @{username}: {e}")
             return False
-        finally:
-            db.close()
 
     # ---- Public API ----
 
     def get_client(self, username: Optional[str] = None) -> Optional[Client]:
-        """Get client for a specific account. If none specified, return first active."""
         if username:
             key = username.lower()
             cl = self._clients.get(key)
             if cl:
                 return cl
-            # Try restore then reconnect
             if self._restore_session(key) or self._auto_reconnect(key):
                 return self._clients.get(key)
             return None
 
-        # No username specified → return least-recently-used active client (round-robin)
         if not self._clients:
             return None
         return self._get_least_active_client()
 
     def _get_least_active_client(self) -> Optional[Client]:
-        """Round-robin: pick the account with the oldest last_action_at."""
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            accounts = (
-                db.query(BotAccount)
-                .filter(BotAccount.is_active == True, BotAccount.is_logged_in == True)
-                .order_by(BotAccount.last_action_at.asc().nullsfirst())
-                .all()
-            )
-            for acct in accounts:
-                if acct.username in self._clients:
-                    self._update_last_action(acct.username)
-                    return self._clients[acct.username]
-            return next(iter(self._clients.values()), None)
-        finally:
-            db.close()
+        accounts = db_proxy.select("bot_accounts", filters={
+            "is_active": "true",
+            "is_logged_in": "true",
+        }, order="last_action_at.asc")
+        for acct in accounts:
+            if acct["username"] in self._clients:
+                self._update_last_action(acct["username"])
+                return self._clients[acct["username"]]
+        return next(iter(self._clients.values()), None)
 
     def list_accounts(self) -> list:
-        """List all accounts with their status."""
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            accounts = db.query(BotAccount).order_by(BotAccount.created_at.asc()).all()
-            return [
-                {
-                    "username": a.username,
-                    "is_active": a.is_active,
-                    "is_logged_in": a.username in self._clients,
-                    "last_login_at": a.last_login_at.isoformat() if a.last_login_at else None,
-                    "last_action_at": a.last_action_at.isoformat() if a.last_action_at else None,
-                }
-                for a in accounts
-            ]
-        finally:
-            db.close()
+        accounts = db_proxy.select("bot_accounts", order="created_at.asc")
+        return [
+            {
+                "username": a.get("username"),
+                "is_active": a.get("is_active"),
+                "is_logged_in": a.get("username") in self._clients,
+                "last_login_at": a.get("last_login_at"),
+                "last_action_at": a.get("last_action_at"),
+            }
+            for a in accounts
+        ]
 
     def login(self, username: str, password: str) -> dict:
         username = username.strip().lstrip("@").lower()
         logger.info(f"[LOGIN] Login request for '{username}'")
 
         # Check account limit
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            count = db.query(BotAccount).count()
-            if count >= 20 and not db.query(BotAccount).filter(BotAccount.username == username).first():
+        total = db_proxy.count("bot_accounts")
+        if total >= 20:
+            existing = self._get_account(username)
+            if not existing:
                 return {"success": False, "message": "Limite de 20 comptes atteinte."}
-        finally:
-            db.close()
 
-        # Try restoring existing session first
         if self._restore_session(username):
             self._save_account(username, self._clients[username], password)
             return {"success": True, "message": "Session reprise avec succès", "username": username}
 
-        # Fresh login
         cl = _create_client()
         try:
             cl.login(username, password)
@@ -373,39 +324,28 @@ class MultiAccountManager:
         return {"success": True, "message": "Tous les comptes déconnectés"}
 
     def remove_account(self, username: str):
-        """Completely remove an account from DB."""
         self.logout(username)
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            db.query(BotAccount).filter(BotAccount.username == username.lower()).delete()
-            db.commit()
-        finally:
-            db.close()
+        account = self._get_account(username)
+        if account:
+            db_proxy.delete("bot_accounts", account["id"])
         return {"success": True, "message": f"Compte @{username} supprimé"}
 
     def restore_all_sessions(self):
-        """Called on startup to restore all active sessions."""
-        from database import SessionLocal, BotAccount
-        db = SessionLocal()
-        try:
-            accounts = db.query(BotAccount).filter(
-                BotAccount.is_active == True,
-                BotAccount.is_logged_in == True,
-            ).all()
-            for acct in accounts:
-                logger.info(f"[STARTUP] Restoring session for @{acct.username}...")
-                if self._restore_session(acct.username):
-                    logger.info(f"[STARTUP] ✓ Restored @{acct.username}")
-                elif self._auto_reconnect(acct.username):
-                    logger.info(f"[STARTUP] ✓ Auto-reconnected @{acct.username}")
-                else:
-                    logger.warning(f"[STARTUP] ✗ Could not restore @{acct.username}")
-        finally:
-            db.close()
+        accounts = db_proxy.select("bot_accounts", filters={
+            "is_active": "true",
+            "is_logged_in": "true",
+        })
+        for acct in accounts:
+            uname = acct.get("username")
+            logger.info(f"[STARTUP] Restoring session for @{uname}...")
+            if self._restore_session(uname):
+                logger.info(f"[STARTUP] ✓ Restored @{uname}")
+            elif self._auto_reconnect(uname):
+                logger.info(f"[STARTUP] ✓ Auto-reconnected @{uname}")
+            else:
+                logger.warning(f"[STARTUP] ✗ Could not restore @{uname}")
 
     def get_auth_status(self, username: Optional[str] = None) -> dict:
-        """Get status of one account or all accounts."""
         if username:
             username = username.lower()
             cl = self._clients.get(username)
@@ -428,5 +368,4 @@ class MultiAccountManager:
             return {"accounts": self.list_accounts(), "total": len(self._clients)}
 
 
-# Singleton manager instance
 account_manager = MultiAccountManager()

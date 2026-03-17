@@ -3,13 +3,12 @@ import requests
 import tempfile
 import os
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy.orm import Session
 
 from instagram_client import account_manager
-from database import get_db, BotSettingsModel, ScheduledPost
+import db_proxy
 from utils import get_daily_count, log_action, validate_image_url
 
 logger = logging.getLogger(__name__)
@@ -24,14 +23,12 @@ class CreatePostRequest(BaseModel):
 
 
 @router.post("/create")
-def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
-    # Validate image URL
+def create_post(req: CreatePostRequest):
     try:
         validate_image_url(req.image_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # If scheduled, save to DB and let the scheduler handle it
     if req.schedule_at:
         try:
             scheduled_time = datetime.fromisoformat(req.schedule_at.replace("Z", "+00:00"))
@@ -41,7 +38,6 @@ def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
         if scheduled_time <= datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="La date de planification doit être dans le futur.")
 
-        # Determine account
         account_username = req.account_username
         if not account_username:
             cl = account_manager.get_client()
@@ -52,23 +48,21 @@ def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
             except Exception:
                 raise HTTPException(status_code=401, detail="Could not determine account")
 
-        scheduled = ScheduledPost(
-            account_username=account_username,
-            image_url=req.image_url,
-            caption=req.caption,
-            scheduled_at=scheduled_time,
-        )
-        db.add(scheduled)
-        db.commit()
-        db.refresh(scheduled)
+        scheduled = db_proxy.insert("bot_scheduled_posts", {
+            "account_username": account_username,
+            "image_url": req.image_url,
+            "caption": req.caption,
+            "scheduled_at": scheduled_time.isoformat(),
+            "status": "pending",
+        })
 
-        log_action(db, "post", "photo", "scheduled",
+        log_action("post", "photo", "scheduled",
                    f"Post scheduled for {scheduled_time.isoformat()} by @{account_username}")
 
         return {
             "success": True,
             "scheduled": True,
-            "post_id": scheduled.id,
+            "post_id": scheduled.get("id"),
             "scheduled_at": scheduled_time.isoformat(),
             "message": f"Post planifié pour {scheduled_time.isoformat()}",
         }
@@ -78,12 +72,12 @@ def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
 
-    settings = db.query(BotSettingsModel).filter(BotSettingsModel.id == 1).first()
-    daily_limit = settings.post_daily_limit if settings else 3
-    daily_count = get_daily_count(db, "post")
+    settings = db_proxy.select_first("bot_settings", {"id": "1"})
+    daily_limit = settings.get("post_daily_limit", 3) if settings else 3
+    daily_count = get_daily_count("post")
 
     if daily_count >= daily_limit:
-        log_action(db, "post", "photo", "blocked", f"Daily limit reached ({daily_limit})")
+        log_action("post", "photo", "blocked", f"Daily limit reached ({daily_limit})")
         raise HTTPException(status_code=429, detail=f"Daily post limit reached ({daily_limit})")
 
     tmp_path = None
@@ -97,10 +91,10 @@ def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
 
         cl.photo_upload(tmp_path, req.caption)
 
-        log_action(db, "post", "photo", "success", f"Post created: {req.caption[:80]}")
+        log_action("post", "photo", "success", f"Post created: {req.caption[:80]}")
         return {"success": True, "message": "Post created successfully"}
     except Exception as e:
-        log_action(db, "post", "photo", "error", str(e))
+        log_action("post", "photo", "error", str(e))
         logger.error(f"Error creating post: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
@@ -109,20 +103,19 @@ def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/scheduled")
-def get_scheduled_posts(db: Session = Depends(get_db)):
-    """List all scheduled posts."""
-    posts = db.query(ScheduledPost).order_by(ScheduledPost.scheduled_at.asc()).all()
+def get_scheduled_posts():
+    posts = db_proxy.select("bot_scheduled_posts", order="scheduled_at.asc")
     return {
         "posts": [
             {
-                "id": p.id,
-                "account_username": p.account_username,
-                "image_url": p.image_url,
-                "caption": p.caption[:100],
-                "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,
-                "status": p.status,
-                "error_message": p.error_message,
-                "published_at": p.published_at.isoformat() if p.published_at else None,
+                "id": p.get("id"),
+                "account_username": p.get("account_username"),
+                "image_url": p.get("image_url"),
+                "caption": (p.get("caption") or "")[:100],
+                "scheduled_at": p.get("scheduled_at"),
+                "status": p.get("status"),
+                "error_message": p.get("error_message"),
+                "published_at": p.get("published_at"),
             }
             for p in posts
         ]
@@ -130,13 +123,11 @@ def get_scheduled_posts(db: Session = Depends(get_db)):
 
 
 @router.delete("/scheduled/{post_id}")
-def cancel_scheduled_post(post_id: int, db: Session = Depends(get_db)):
-    """Cancel a pending scheduled post."""
-    post = db.query(ScheduledPost).filter(ScheduledPost.id == post_id).first()
+def cancel_scheduled_post(post_id: int):
+    post = db_proxy.select_one("bot_scheduled_posts", post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    if post.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Post is already {post.status}")
-    db.delete(post)
-    db.commit()
+    if post.get("status") != "pending":
+        raise HTTPException(status_code=400, detail=f"Post is already {post.get('status')}")
+    db_proxy.delete("bot_scheduled_posts", post_id)
     return {"success": True, "message": f"Scheduled post #{post_id} cancelled"}

@@ -1,33 +1,31 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
-from sqlalchemy.orm import Session
-from database import get_db, LogEntry
+import db_proxy
 
 router = APIRouter()
 
 
 @router.get("")
 def get_logs(
-    db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     action_type: Optional[str] = Query(None),
 ):
-    query = db.query(LogEntry)
+    filters = {}
     if action_type:
-        query = query.filter(LogEntry.action_type == action_type)
+        filters["action_type"] = action_type
 
-    total = query.count()
-    logs = query.order_by(LogEntry.created_at.desc()).offset(offset).limit(limit).all()
+    all_rows = db_proxy.select("bot_logs", filters=filters, order="created_at.desc", limit=limit, offset=offset)
+    total = db_proxy.count("bot_logs", filters=filters if filters else None)
 
     result = []
-    for log in logs:
+    for log in all_rows:
         result.append({
-            "id": log.id,
-            "action_type": log.action_type,
-            "target": log.target,
-            "status": log.status,
-            "message": log.message,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "id": log.get("id"),
+            "action_type": log.get("action_type"),
+            "target": log.get("target"),
+            "status": log.get("status"),
+            "message": log.get("message"),
+            "created_at": log.get("created_at"),
         })
     return {"logs": result, "total": total}

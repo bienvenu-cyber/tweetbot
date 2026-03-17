@@ -11,6 +11,7 @@ Usage on Railway:
 import os
 import logging
 import requests
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger("instagram_bot")
@@ -40,19 +41,23 @@ def _url(table: str, record_id: Optional[int] = None) -> str:
 # ---------------------------------------------------------------------------
 
 def select(table: str, filters: Optional[Dict[str, Any]] = None,
-           order: Optional[str] = None, limit: Optional[int] = None) -> List[Dict]:
+           order: Optional[str] = None, limit: Optional[int] = None,
+           offset: Optional[int] = None) -> List[Dict]:
     """GET rows from a table. Returns list of dicts."""
     params = {}
     if filters:
         for k, v in filters.items():
-            params[k] = v
+            params[k] = str(v) if v is not None else ""
     if order:
         params["order"] = order
     if limit:
         params["limit"] = str(limit)
+    if offset:
+        params["offset"] = str(offset)
     resp = _session.get(_url(table), params=params)
     resp.raise_for_status()
-    return resp.json().get("data", [])
+    result = resp.json().get("data", [])
+    return result if isinstance(result, list) else [result] if result else []
 
 
 def select_one(table: str, record_id: int) -> Optional[Dict]:
@@ -62,6 +67,12 @@ def select_one(table: str, record_id: int) -> Optional[Dict]:
         return None
     resp.raise_for_status()
     return resp.json().get("data")
+
+
+def select_first(table: str, filters: Dict[str, Any]) -> Optional[Dict]:
+    """Select the first row matching filters."""
+    rows = select(table, filters=filters, limit=1)
+    return rows[0] if rows else None
 
 
 def insert(table: str, row: Dict) -> Dict:
@@ -81,7 +92,7 @@ def update(table: str, record_id: int, fields: Dict) -> Dict:
 
 
 def update_by_filter(table: str, filters: Dict[str, Any], fields: Dict) -> List[Dict]:
-    """PATCH rows matching filters (no record id)."""
+    """PATCH rows matching filters."""
     body = {**fields, "_filters": filters}
     resp = _session.patch(_url(table), json=body)
     resp.raise_for_status()
@@ -95,10 +106,29 @@ def delete(table: str, record_id: int) -> bool:
     return True
 
 
-def count(table: str, filters: Optional[Dict[str, Any]] = None) -> int:
-    """Count rows (fetches all ids, returns len). For small tables."""
+def delete_by_filter(table: str, filters: Dict[str, Any]) -> bool:
+    """Delete rows matching filters (fetches ids then deletes each)."""
     rows = select(table, filters=filters)
-    return len(rows) if isinstance(rows, list) else 0
+    for row in rows:
+        delete(table, row["id"])
+    return True
+
+
+def count(table: str, filters: Optional[Dict[str, Any]] = None) -> int:
+    """Count rows."""
+    rows = select(table, filters=filters)
+    return len(rows)
+
+
+def count_today(table: str, action_type: str, status: str = "success") -> int:
+    """Count today's actions of a given type with given status."""
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = select(table, filters={
+        "action_type": action_type,
+        "status": status,
+        "created_at__gte": today_start.isoformat(),
+    })
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
