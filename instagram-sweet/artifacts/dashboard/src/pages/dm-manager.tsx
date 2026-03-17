@@ -401,7 +401,7 @@ export default function DmManager() {
                   {threadsError ? (
                     <>
                       <p className="text-sm font-medium">Accès aux DMs indisponible</p>
-                      <p className="text-xs mt-1">Instagram bloque l'accès à la boîte de réception depuis le serveur. Les envois de DM fonctionnent quand même.</p>
+                      <p className="text-xs mt-1">Instagram bloque temporairement l'accès à la boîte de réception depuis le serveur. La session n'est pas forcément expirée.</p>
                     </>
                   ) : (
                     <>
