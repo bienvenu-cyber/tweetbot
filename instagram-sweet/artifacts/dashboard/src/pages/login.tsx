@@ -142,15 +142,14 @@ export default function Login() {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 90000); // 90 secondes
 
-      const res = await fetch(`${BASE_URL}/auth/import-cookies`, {
+      const res = await apiFetch(`${BOT_API_BASE}/auth/import-cookies`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cookie_string: cookieString.trim(),
           username: cookieUsername.trim() || undefined,
         }),
-        signal: controller.signal,
-      });
+      }, 90000);
 
       clearTimeout(timer);
 
