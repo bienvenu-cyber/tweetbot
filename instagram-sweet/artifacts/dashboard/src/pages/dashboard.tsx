@@ -11,15 +11,16 @@ import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-  const { data: account, isLoading: accountLoading } = useAccount();
+  const { data: account, isLoading: accountLoading, error: accountError } = useAccount();
   const { data: queueData } = useQueue();
   const { data: logsData } = useLogs({ limit: 10 });
 
+  const accountFailed = !!accountError;
   const stats = [
     { title: "Pending Actions", value: queueData?.total || 0, icon: Clock, color: "text-blue-500", bg: "bg-blue-500/10" },
     { title: "Recent Logs", value: logsData?.total || 0, icon: Activity, color: "text-purple-500", bg: "bg-purple-500/10" },
-    { title: "Followers", value: account?.followers_count || 0, icon: Users, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-    { title: "Following", value: account?.following_count || 0, icon: Users, color: "text-orange-500", bg: "bg-orange-500/10" },
+    { title: "Followers", value: accountFailed ? "—" : (account?.followers_count || 0), icon: Users, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { title: "Following", value: accountFailed ? "—" : (account?.following_count || 0), icon: Users, color: "text-orange-500", bg: "bg-orange-500/10" },
   ];
 
   return (
