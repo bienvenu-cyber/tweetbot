@@ -1,24 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AuthStatus, LoginResponse, StatusMessage, AccountInfo } from "@workspace/api-client-react";
-import { BOT_API_BASE } from "@/config";
+import { BOT_API_BASE, apiFetch } from "@/config";
 
 const BASE_URL = BOT_API_BASE;
-
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 90000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export function useAuthStatus() {
   return useQuery({
     queryKey: ["auth-status"],
     queryFn: async (): Promise<AuthStatus> => {
-      const res = await fetchWithTimeout(`${BASE_URL}/auth/status`, {}, 10000);
+      const res = await apiFetch(`${BASE_URL}/auth/status`, {}, 10000);
       if (!res.ok) throw new Error("Failed to fetch auth status");
       return res.json();
     },
@@ -31,7 +21,7 @@ export function useAccount() {
   return useQuery({
     queryKey: ["account-info"],
     queryFn: async (): Promise<AccountInfo> => {
-      const res = await fetchWithTimeout(`${BASE_URL}/account`, {}, 10000);
+      const res = await apiFetch(`${BASE_URL}/account`, {}, 10000);
       if (!res.ok) throw new Error("Failed to fetch account info");
       return res.json();
     },
@@ -43,7 +33,7 @@ export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { username: string; password: string }): Promise<LoginResponse> => {
-      const res = await fetchWithTimeout(
+      const res = await apiFetch(
         `${BASE_URL}/auth/login`,
         {
           method: "POST",
@@ -69,7 +59,7 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<StatusMessage> => {
-      const res = await fetchWithTimeout(`${BASE_URL}/auth/logout`, { method: "POST" }, 10000);
+      const res = await apiFetch(`${BASE_URL}/auth/logout`, { method: "POST" }, 10000);
       if (!res.ok) throw new Error("Failed to logout");
       return res.json();
     },
