@@ -113,6 +113,8 @@ export default function Login() {
 
       const data = await res.json();
       if (data.success) {
+        await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+        await queryClient.invalidateQueries({ queryKey: ["account-info"] });
         toast({ title: "✓ Connecté !", description: `@${data.username}` });
         setLocation("/");
       } else {
