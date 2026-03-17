@@ -204,24 +204,39 @@ export default function DmManager() {
                     {/* Followers source */}
                     {bulkSource === "followers" && (
                       <div className="space-y-3 bg-secondary/30 p-4 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="space-y-1 flex-1">
-                            <Label>Nombre d'abonnés à charger</Label>
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_auto] md:items-end">
+                          <div className="space-y-1">
+                            <Label>Username du compte source</Label>
+                            <Input
+                              type="text"
+                              placeholder="compte_test"
+                              value={followersAccountUsernameInput}
+                              onChange={(e) => setFollowersAccountUsernameInput(e.target.value)}
+                              className="bg-background/50"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Vide = compte Instagram actif par défaut.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label>Nombre d'abonnés</Label>
                             <Input
                               type="number"
                               min={10}
                               max={500}
                               value={followerCount}
                               onChange={(e) => setFollowerCount(Number(e.target.value))}
-                              className="bg-background/50 w-32"
+                              className="bg-background/50"
                             />
                           </div>
+
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setLoadFollowers(true)}
+                            onClick={handleLoadFollowers}
                             disabled={followersLoading}
-                            className="mt-5"
+                            className="md:self-end"
                           >
                             {followersLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
                             {followersLoading ? "Chargement..." : "Charger"}
@@ -237,8 +252,11 @@ export default function DmManager() {
 
                         {followersData && (
                           <div className="flex items-center gap-2 text-sm">
-                            <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            <span className="text-foreground">{followersData.total} abonnés chargés</span>
+                            <CheckCircle2 className="w-4 h-4 text-primary" />
+                            <span className="text-foreground">
+                              {followersData.total} abonnés chargés
+                              {followersRequest?.accountUsername ? ` depuis @${followersRequest.accountUsername}` : ""}
+                            </span>
                           </div>
                         )}
 
