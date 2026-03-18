@@ -22,11 +22,14 @@ async function readApiPayload<T>(res: Response): Promise<T | Record<string, unkn
   }
 }
 
-export function useDmThreads(amount: number = 20) {
+export function useDmThreads(amount: number = 20, accountUsername?: string) {
   return useQuery({
-    queryKey: ["dm-threads", amount],
+    queryKey: ["dm-threads", amount, accountUsername ?? "default"],
     queryFn: async (): Promise<DmThreadList> => {
-      const res = await apiFetch(`${BOT_API_BASE}/dm/threads?amount=${amount}`);
+      const params = new URLSearchParams({ amount: String(amount) });
+      if (accountUsername) params.set("account_username", accountUsername);
+
+      const res = await apiFetch(`${BOT_API_BASE}/dm/threads?${params.toString()}`);
       const payload = await readApiPayload<DmThreadList>(res);
       if (!res.ok) throw new Error(getApiErrorMessage(payload, "Failed to fetch threads"));
       return (payload ?? { threads: [], total: 0 }) as DmThreadList;

@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSendDm, useBulkSendDm, useDmThreads, useFollowers } from "@/hooks/use-dm";
+import { useSelectedAccount } from "@/hooks/use-selected-account";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,9 +31,12 @@ const bulkDmSchema = z.object({
 
 export default function DmManager() {
   const { toast } = useToast();
+  const { selectedAccount } = useSelectedAccount();
+  const activeDmAccount = selectedAccount?.trim().replace(/^@/, "").toLowerCase() || undefined;
+
   const sendDm = useSendDm();
   const bulkSendDm = useBulkSendDm();
-  const { data: threadsData, isLoading: threadsLoading, error: threadsError } = useDmThreads(20);
+  const { data: threadsData, isLoading: threadsLoading, error: threadsError } = useDmThreads(20, activeDmAccount);
 
   // Bulk campaign state
   const [bulkSource, setBulkSource] = useState<"manual" | "followers">("followers");
@@ -66,7 +70,7 @@ export default function DmManager() {
 
   const onSingleSubmit = (data: z.infer<typeof singleDmSchema>) => {
     const cleanUsername = data.username.trim().replace(/^@/, '');
-    sendDm.mutate({ ...data, username: cleanUsername }, {
+    sendDm.mutate({ ...data, username: cleanUsername, account_username: activeDmAccount }, {
       onSuccess: () => {
         toast({ title: "Message Sent", description: `Successfully sent to @${cleanUsername}` });
         singleForm.reset();
@@ -110,6 +114,7 @@ export default function DmManager() {
       message: data.message,
       delay_min: data.delay_min,
       delay_max: data.delay_max,
+      account_username: activeDmAccount,
       skip_already_sent: skipAlreadySent,
     }, {
       onSuccess: (res) => {
