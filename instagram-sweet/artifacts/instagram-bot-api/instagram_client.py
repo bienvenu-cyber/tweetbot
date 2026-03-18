@@ -325,6 +325,7 @@ class MultiAccountManager:
 
         try:
             cl.set_settings(settings)
+            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
             cl.login(username or cookies.get("ds_user_id", ""), "")
         except Exception:
             pass
