@@ -152,6 +152,25 @@ class ToggleRequest(BaseModel):
     is_active: bool
 
 
+class SavePasswordRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/save-password")
+def save_password(req: SavePasswordRequest):
+    """Save/update encrypted password for an existing account (for auto-reconnect)."""
+    from encryption import encrypt_password
+    username = req.username.strip().lstrip("@").lower()
+    account = db_proxy.select_first("bot_accounts", {"username": username})
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account @{username} not found in database")
+    encrypted = encrypt_password(req.password)
+    db_proxy.update("bot_accounts", account["id"], {"encrypted_password": encrypted})
+    logger.info(f"[ACCOUNT] Saved encrypted password for @{username}")
+    return {"success": True, "message": f"Mot de passe chiffré sauvegardé pour @{username}"}
+
+
 @router.patch("/{username}/toggle")
 def toggle_account(username: str, req: ToggleRequest):
     username = username.strip().lstrip("@").lower()
