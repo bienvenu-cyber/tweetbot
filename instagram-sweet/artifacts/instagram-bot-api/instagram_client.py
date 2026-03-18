@@ -34,6 +34,26 @@ def get_global_proxy() -> Optional[str]:
 
 
 def _parse_cookie_string(cookie_str: str) -> dict:
+    """Parse cookies from either standard 'key=val; key=val' format or Netscape HTTP Cookie File format."""
+    cookie_str = cookie_str.strip()
+
+    # Detect Netscape format (lines with tab-separated fields, 7 columns)
+    if "# Netscape HTTP Cookie File" in cookie_str or "\t" in cookie_str:
+        cookies = {}
+        for line in cookie_str.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 7:
+                name = parts[5].strip()
+                value = parts[6].strip()
+                if name and value:
+                    cookies[name] = value
+        if cookies:
+            return cookies
+
+    # Standard format: key=value; key=value
     cookies = {}
     for part in cookie_str.split(";"):
         part = part.strip()
