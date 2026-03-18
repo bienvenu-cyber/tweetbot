@@ -90,3 +90,22 @@ export function useSavePassword() {
     },
   });
 }
+
+export function useSetAccountProxy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ username, proxy_url }: { username: string; proxy_url: string }) => {
+      const res = await apiFetch(`${BOT_API_BASE}/account/${username}/proxy`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxy_url: proxy_url || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed to set proxy" }));
+        throw new Error(err.detail || err.message);
+      }
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts"] }),
+  });
+}
