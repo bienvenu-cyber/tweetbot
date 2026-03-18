@@ -61,7 +61,8 @@ export default function Settings() {
 
   const handleTestProxy = () => {
     setProxyTestResult(null);
-    testProxy.mutate(undefined, {
+    const proxyUrl = form.getValues("proxy_url");
+    testProxy.mutate(proxyUrl, {
       onSuccess: (res) => setProxyTestResult({ ok: res.success, msg: res.message, ip: res.ip }),
       onError: (err) => setProxyTestResult({ ok: false, msg: err.message }),
     });
