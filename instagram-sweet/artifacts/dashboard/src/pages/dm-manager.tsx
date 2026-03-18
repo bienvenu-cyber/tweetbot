@@ -87,7 +87,7 @@ const bulkDmSchema = z.object({
 
 export default function DmManager() {
   const { toast } = useToast();
-  const { selectedAccount } = useSelectedAccount();
+  const { selectedAccount, setSelectedAccount } = useSelectedAccount();
   const activeDmAccount = selectedAccount?.trim().replace(/^@/, "").toLowerCase() || undefined;
   const { data: accountsList = [] } = useAccounts();
   const sendDm = useSendDm();
