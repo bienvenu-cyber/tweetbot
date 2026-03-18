@@ -9,6 +9,7 @@ export interface BotAccount {
   last_login_at: string | null;
   last_action_at: string | null;
   created_at: string;
+  proxy_url: string | null;
 }
 
 export function useAccounts() {
