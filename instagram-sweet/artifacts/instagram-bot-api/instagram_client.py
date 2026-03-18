@@ -138,11 +138,12 @@ class MultiAccountManager:
         account = self._get_account(username)
         if not account or not account.get("session_data"):
             return False
+        account_proxy = account.get("proxy_url") or None
         try:
             settings = json.loads(account["session_data"])
-            cl = _create_client()
+            cl = _create_client(account_proxy)
             cl.set_settings(settings)
-            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
+            _apply_proxy(cl, account_proxy)  # Re-apply proxy after set_settings overwrites it
             # Don't call cl.login() — just inject session and verify with a light API call
             cl.init()
             user_info = cl.account_info()
