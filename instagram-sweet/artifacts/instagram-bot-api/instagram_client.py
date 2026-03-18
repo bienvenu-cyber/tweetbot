@@ -63,20 +63,21 @@ def _parse_cookie_string(cookie_str: str) -> dict:
     return cookies
 
 
-def _create_client() -> Client:
+def _create_client(proxy_url: Optional[str] = None) -> Client:
     cl = Client()
     cl.delay_range = [2, 5]
     cl.set_locale("fr_BJ")
     cl.set_timezone_offset(3600)
-    _apply_proxy(cl)
+    _apply_proxy(cl, proxy_url)
     return cl
 
 
-def _apply_proxy(cl: Client):
-    """Apply global proxy to client. Must be called after set_settings() too."""
-    if _proxy_url:
-        cl.set_proxy(_proxy_url)
-        logger.info(f"[PROXY] Applied proxy to client: {_proxy_url[:30]}...")
+def _apply_proxy(cl: Client, account_proxy: Optional[str] = None):
+    """Apply per-account proxy if set, otherwise fall back to global proxy."""
+    proxy = account_proxy or _proxy_url
+    if proxy:
+        cl.set_proxy(proxy)
+        logger.info(f"[PROXY] Applied proxy to client: {proxy[:30]}... ({'per-account' if account_proxy else 'global'})")
 
 
 class MultiAccountManager:
