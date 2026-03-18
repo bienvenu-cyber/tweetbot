@@ -34,7 +34,7 @@ export default function DmManager() {
   const { toast } = useToast();
   const { selectedAccount } = useSelectedAccount();
   const activeDmAccount = selectedAccount?.trim().replace(/^@/, "").toLowerCase() || undefined;
-
+  const { data: accountsList = [] } = useAccounts();
   const sendDm = useSendDm();
   const bulkSendDm = useBulkSendDm();
   const { data: threadsData, isLoading: threadsLoading, error: threadsError } = useDmThreads(20, activeDmAccount);
