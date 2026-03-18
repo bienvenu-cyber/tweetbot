@@ -131,9 +131,16 @@ export default function DmManager() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-foreground">DM Manager</h1>
-        <p className="text-muted-foreground mt-1">Envoie des messages individuels ou lance des campagnes en masse.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-display font-bold text-foreground">DM Manager</h1>
+          <p className="text-muted-foreground mt-1">Envoie des messages individuels ou lance des campagnes en masse.</p>
+        </div>
+        <ActiveAccountPicker
+          accounts={accountsList}
+          selected={activeDmAccount ?? null}
+          onSelect={setSelectedAccount}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
