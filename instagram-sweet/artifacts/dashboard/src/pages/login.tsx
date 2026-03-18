@@ -413,10 +413,39 @@ export default function Login() {
                     <p className="text-xs text-muted-foreground">Le cookie <strong>sessionid</strong> est obligatoire. Les autres améliorent la stabilité.</p>
                   </div>
 
+                  {/* PASSWORD SAVE FOR AUTO-RECONNECT */}
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-emerald-300">
+                        <Lock className="w-4 h-4" />
+                        <p className="font-semibold text-sm">Sauvegarder le mot de passe</p>
+                      </div>
+                      <Switch
+                        checked={savePasswordEnabled}
+                        onCheckedChange={setSavePasswordEnabled}
+                        className="data-[state=checked]:bg-emerald-500"
+                      />
+                    </div>
+                    {savePasswordEnabled && (
+                      <>
+                        <p className="text-xs text-emerald-200/70 leading-relaxed">
+                          Si le cookie expire, le bot utilisera ce mot de passe (chiffré AES) pour se reconnecter automatiquement — sans intervention manuelle.
+                        </p>
+                        <Input
+                          type="password"
+                          placeholder="Mot de passe Instagram"
+                          value={cookiePassword}
+                          onChange={e => setCookiePassword(e.target.value)}
+                          className="bg-background/50 h-10 rounded-xl text-sm"
+                        />
+                      </>
+                    )}
+                  </div>
+
                   <Button
                     onClick={handleCookieImport}
                     disabled={cookieLoading || !cookieString.trim()}
-                    className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium"
+                    className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
                   >
                     {cookieLoading
                       ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Import en cours...</>
