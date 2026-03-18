@@ -42,11 +42,15 @@ export default function Login() {
   const [cookieString, setCookieString] = useState("");
   const [cookieUsername, setCookieUsername] = useState("");
   const [cookieLoading, setCookieLoading] = useState(false);
+  const [savePasswordEnabled, setSavePasswordEnabled] = useState(true);
+  const [cookiePassword, setCookiePassword] = useState("");
   const [challenge, setChallenge] = useState<ChallengeState>({
     active: false, type: null, geoBlocked: false, username: "", password: ""
   });
   const [verifyCode, setVerifyCode] = useState("");
   const [codeSubmitting, setCodeSubmitting] = useState(false);
+
+  const savePasswordMutation = useSavePassword();
 
   const queryClient = useQueryClient();
   const { data: auth, isLoading: checkingAuth } = useAuthStatus();
