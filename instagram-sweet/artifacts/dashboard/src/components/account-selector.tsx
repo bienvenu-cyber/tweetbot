@@ -35,6 +35,10 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
   const { data: accounts = [], isLoading } = useAccounts();
   const toggleAccount = useToggleAccount();
   const removeAccount = useRemoveAccount();
+  const setAccountProxy = useSetAccountProxy();
+
+  const [proxyEditing, setProxyEditing] = useState<string | null>(null);
+  const [proxyValue, setProxyValue] = useState("");
 
   const [showAdd, setShowAdd] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("cookies");
