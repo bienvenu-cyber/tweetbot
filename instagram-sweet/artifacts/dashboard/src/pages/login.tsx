@@ -7,14 +7,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
   Bot, AlertTriangle, ShieldCheck, Loader2, Globe, RefreshCw,
-  CheckCircle2, Cookie, KeyRound, ChevronRight, Copy, ExternalLink
+  CheckCircle2, Cookie, KeyRound, ChevronRight, Copy, ExternalLink, Lock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useLogin, useAuthStatus } from "@/hooks/use-auth";
+import { useSavePassword } from "@/hooks/use-accounts";
 import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
@@ -40,11 +42,15 @@ export default function Login() {
   const [cookieString, setCookieString] = useState("");
   const [cookieUsername, setCookieUsername] = useState("");
   const [cookieLoading, setCookieLoading] = useState(false);
+  const [savePasswordEnabled, setSavePasswordEnabled] = useState(true);
+  const [cookiePassword, setCookiePassword] = useState("");
   const [challenge, setChallenge] = useState<ChallengeState>({
     active: false, type: null, geoBlocked: false, username: "", password: ""
   });
   const [verifyCode, setVerifyCode] = useState("");
   const [codeSubmitting, setCodeSubmitting] = useState(false);
+
+  const savePasswordMutation = useSavePassword();
 
   const queryClient = useQueryClient();
   const { data: auth, isLoading: checkingAuth } = useAuthStatus();
@@ -177,6 +183,16 @@ export default function Login() {
       console.log("[LOGIN] Cookie import response body:", JSON.stringify(data));
       if (data.success) {
         console.log("[LOGIN] Cookie import SUCCESS → invalidating auth cache");
+        // Save password if enabled
+        const usernameToSave = data.username || cookieUsername.trim();
+        if (savePasswordEnabled && cookiePassword.trim() && usernameToSave) {
+          try {
+            await savePasswordMutation.mutateAsync({ username: usernameToSave, password: cookiePassword.trim() });
+            console.log("[LOGIN] Password saved for auto-reconnect");
+          } catch (e) {
+            console.warn("[LOGIN] Failed to save password:", e);
+          }
+        }
         await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         await queryClient.invalidateQueries({ queryKey: ["account-info"] });
         // Wait briefly for queries to refetch
@@ -397,10 +413,39 @@ export default function Login() {
                     <p className="text-xs text-muted-foreground">Le cookie <strong>sessionid</strong> est obligatoire. Les autres améliorent la stabilité.</p>
                   </div>
 
+                  {/* PASSWORD SAVE FOR AUTO-RECONNECT */}
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-emerald-300">
+                        <Lock className="w-4 h-4" />
+                        <p className="font-semibold text-sm">Sauvegarder le mot de passe</p>
+                      </div>
+                      <Switch
+                        checked={savePasswordEnabled}
+                        onCheckedChange={setSavePasswordEnabled}
+                        className="data-[state=checked]:bg-emerald-500"
+                      />
+                    </div>
+                    {savePasswordEnabled && (
+                      <>
+                        <p className="text-xs text-emerald-200/70 leading-relaxed">
+                          Si le cookie expire, le bot utilisera ce mot de passe (chiffré AES) pour se reconnecter automatiquement — sans intervention manuelle.
+                        </p>
+                        <Input
+                          type="password"
+                          placeholder="Mot de passe Instagram"
+                          value={cookiePassword}
+                          onChange={e => setCookiePassword(e.target.value)}
+                          className="bg-background/50 h-10 rounded-xl text-sm"
+                        />
+                      </>
+                    )}
+                  </div>
+
                   <Button
                     onClick={handleCookieImport}
                     disabled={cookieLoading || !cookieString.trim()}
-                    className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium"
+                    className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
                   >
                     {cookieLoading
                       ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Import en cours...</>

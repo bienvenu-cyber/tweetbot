@@ -72,3 +72,20 @@ export function useRemoveAccount() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts"] }),
   });
 }
+
+export function useSavePassword() {
+  return useMutation({
+    mutationFn: async (data: { username: string; password: string }) => {
+      const res = await apiFetch(`${BOT_API_BASE}/account/save-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed to save password" }));
+        throw new Error(err.detail || err.message);
+      }
+      return res.json();
+    },
+  });
+}
