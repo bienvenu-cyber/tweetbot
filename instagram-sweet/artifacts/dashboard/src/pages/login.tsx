@@ -183,6 +183,16 @@ export default function Login() {
       console.log("[LOGIN] Cookie import response body:", JSON.stringify(data));
       if (data.success) {
         console.log("[LOGIN] Cookie import SUCCESS → invalidating auth cache");
+        // Save password if enabled
+        const usernameToSave = data.username || cookieUsername.trim();
+        if (savePasswordEnabled && cookiePassword.trim() && usernameToSave) {
+          try {
+            await savePasswordMutation.mutateAsync({ username: usernameToSave, password: cookiePassword.trim() });
+            console.log("[LOGIN] Password saved for auto-reconnect");
+          } catch (e) {
+            console.warn("[LOGIN] Failed to save password:", e);
+          }
+        }
         await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         await queryClient.invalidateQueries({ queryKey: ["account-info"] });
         // Wait briefly for queries to refetch
