@@ -174,9 +174,10 @@ class MultiAccountManager:
             f"[RECONNECT] ⚠️ Session restore FAILED for @{username}. "
             f"Falling back to password login — this may trigger a challenge!"
         )
+        account_proxy = account.get("proxy_url") or None
         try:
             password = decrypt_password(account["encrypted_password"])
-            cl = _create_client()
+            cl = _create_client(account_proxy)
             cl.login(username, password)
             self._clients[username.lower()] = cl
             db_proxy.update("bot_accounts", account["id"], {
