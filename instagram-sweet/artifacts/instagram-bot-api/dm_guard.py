@@ -66,26 +66,8 @@ def should_back_off_for_dm_error(error: Exception | str) -> bool:
 
 
 def get_cooldown_message(account_username: Optional[str], action: str) -> Optional[str]:
-    state = _get_state(account_username, action)
-    blocked_until = state.get("blocked_until")
-
-    if not isinstance(blocked_until, datetime):
-        return None
-
-    now = datetime.now(timezone.utc)
-    if blocked_until <= now:
-        state["blocked_until"] = None
-        return None
-
-    remaining_seconds = int((blocked_until - now).total_seconds())
-    remaining_minutes = max(1, (remaining_seconds + 59) // 60)
-    label = _ACTION_LABELS.get(action, action)
-    reason = str(state.get("last_reason") or "Instagram a temporairement restreint cette action.")
-
-    if account_username:
-        return f"Le compte @{_account_key(account_username)} est en pause pour la {label} pendant encore ~{remaining_minutes} min. {reason}"
-
-    return f"La session Instagram active est en pause pour la {label} pendant encore ~{remaining_minutes} min. {reason}"
+    """Cooldown disabled — never blocks sending."""
+    return None
 
 
 def wait_before_dm_action(account_username: Optional[str], action: str):
@@ -108,20 +90,14 @@ def register_dm_success(account_username: Optional[str], action: str):
 
 
 def register_dm_failure(account_username: Optional[str], action: str, reason: str) -> str:
+    """Log the failure but never activate a cooldown block."""
     state = _get_state(account_username, action)
     failures = int(state.get("failures") or 0) + 1
     state["failures"] = failures
     state["last_reason"] = reason.strip() or "Instagram a temporairement restreint cette action."
 
-    base_minutes = _BASE_COOLDOWN_MINUTES.get(action, 30)
-    max_minutes = _MAX_COOLDOWN_MINUTES.get(action, 180)
-    cooldown_minutes = min(base_minutes * (2 ** (failures - 1)), max_minutes)
-    blocked_until = datetime.now(timezone.utc) + timedelta(minutes=cooldown_minutes)
-    state["blocked_until"] = blocked_until
-
     logger.warning(
-        f"[DM GUARD] Cooldown activated for @{_account_key(account_username)} / {action}: "
-        f"{cooldown_minutes} min after failure #{failures}"
+        f"[DM GUARD] Failure #{failures} for @{_account_key(account_username)} / {action} (no cooldown)"
     )
 
-    return get_cooldown_message(account_username, action) or state["last_reason"]
+    return state["last_reason"]
