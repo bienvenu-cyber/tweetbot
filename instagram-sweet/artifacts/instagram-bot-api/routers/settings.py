@@ -78,10 +78,15 @@ def update_settings(body: BotSettings):
     return _settings_to_dict(updated if updated else fields)
 
 
+class ProxyTestRequest(BaseModel):
+    proxy_url: Optional[str] = None
+
+
 @router.post("/proxy/test")
-def test_proxy():
+def test_proxy(body: Optional[ProxyTestRequest] = None):
     import requests
-    proxy = get_global_proxy()
+    # Use provided proxy_url from body, fallback to global
+    proxy = (body.proxy_url.strip() if body and body.proxy_url and body.proxy_url.strip() else None) or get_global_proxy()
     if not proxy:
         return {"success": False, "message": "Aucun proxy configuré. Ajoute un proxy dans les paramètres."}
     try:

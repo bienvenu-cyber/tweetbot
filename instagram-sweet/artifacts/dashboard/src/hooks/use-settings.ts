@@ -44,8 +44,12 @@ export function useUpdateSettings() {
 
 export function useTestProxy() {
   return useMutation({
-    mutationFn: async (): Promise<{ success: boolean; message: string; ip?: string }> => {
-      const res = await apiFetch(`${BOT_API_BASE}/settings/proxy/test`, { method: "POST" });
+    mutationFn: async (proxyUrl?: string): Promise<{ success: boolean; message: string; ip?: string }> => {
+      const res = await apiFetch(`${BOT_API_BASE}/settings/proxy/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxy_url: proxyUrl || "" }),
+      });
       if (!res.ok) throw new Error("Failed to test proxy");
       return res.json();
     },
