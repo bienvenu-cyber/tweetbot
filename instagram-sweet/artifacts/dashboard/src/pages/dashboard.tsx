@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Users, MessageCircle, Send, CheckCircle2, AlertCircle, Clock, Activity, Instagram } from "lucide-react";
+import { Users, MessageCircle, Send, CheckCircle2, AlertCircle, Clock, Activity, Instagram, Mail, Phone, Globe, BadgeCheck, Briefcase, Link, Calendar, Shield } from "lucide-react";
 import { useAccount } from "@/hooks/use-auth";
 import { useLogs } from "@/hooks/use-logs";
 import { useQueue } from "@/hooks/use-queue";
@@ -7,7 +7,8 @@ import { useSelectedAccount } from "@/hooks/use-selected-account";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AccountSelector } from "@/components/account-selector";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
+import { fr } from "date-fns/locale";
 
 export default function Dashboard() {
   const { selectedAccount, setSelectedAccount } = useSelectedAccount();
@@ -83,35 +84,95 @@ export default function Dashboard() {
               <div className="text-center space-y-4">
                 <div className="relative w-24 h-24 mx-auto">
                   <img 
-                    src={account.profile_pic_url} 
+                    src={(account as any).profile_pic_url_hd || account.profile_pic_url} 
                     alt={account.username} 
                     className="w-full h-full rounded-full object-cover border-2 border-primary/20 shadow-xl"
                   />
                   <div className="absolute bottom-0 right-0 w-6 h-6 bg-emerald-500 border-4 border-card rounded-full"></div>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-foreground">{account.full_name || account.username}</h3>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <h3 className="text-xl font-bold text-foreground">{account.full_name || account.username}</h3>
+                    {(account as any).is_verified && <BadgeCheck className="w-5 h-5 text-blue-500" />}
+                  </div>
                   <p className="text-primary font-medium">@{account.username}</p>
+                  <div className="flex items-center justify-center gap-2 mt-1 flex-wrap">
+                    {(account as any).is_business && (
+                      <Badge variant="secondary" className="text-xs gap-1"><Briefcase className="w-3 h-3" />Business</Badge>
+                    )}
+                    {(account as any).category && (
+                      <Badge variant="outline" className="text-xs">{(account as any).category}</Badge>
+                    )}
+                    {(account as any).is_private && (
+                      <Badge variant="outline" className="text-xs gap-1"><Shield className="w-3 h-3" />Privé</Badge>
+                    )}
+                  </div>
                 </div>
                 {account.biography && (
                   <p className="text-sm text-muted-foreground bg-secondary/50 p-3 rounded-lg text-left">
                     {account.biography}
                   </p>
                 )}
+                
+                {/* Stats row */}
                 <div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Posts</p>
-                    <p className="font-semibold text-foreground">{account.media_count}</p>
+                    <p className="font-semibold text-foreground">{(account.media_count || 0).toLocaleString()}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Followers</p>
-                    <p className="font-semibold text-foreground">{account.followers_count}</p>
+                    <p className="font-semibold text-foreground">{(account.followers_count || 0).toLocaleString()}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Following</p>
-                    <p className="font-semibold text-foreground">{account.following_count}</p>
+                    <p className="font-semibold text-foreground">{(account.following_count || 0).toLocaleString()}</p>
                   </div>
                 </div>
+
+                {/* Contact & details */}
+                {((account as any).public_email || (account as any).public_phone || (account as any).external_url || (account as any).added_at) && (
+                  <div className="space-y-2 pt-3 border-t border-border text-left">
+                    {(account as any).public_email && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Mail className="w-4 h-4 text-primary/70" />
+                        <span>{(account as any).public_email}</span>
+                      </div>
+                    )}
+                    {(account as any).public_phone && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Phone className="w-4 h-4 text-primary/70" />
+                        <span>{(account as any).public_phone}</span>
+                      </div>
+                    )}
+                    {(account as any).external_url && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Globe className="w-4 h-4 text-primary/70" />
+                        <a href={(account as any).external_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                          {(account as any).external_url.replace(/^https?:\/\//, '')}
+                        </a>
+                      </div>
+                    )}
+                    {(account as any).added_at && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="w-4 h-4 text-primary/70" />
+                        <span>Ajouté {formatDistanceToNow(new Date((account as any).added_at), { addSuffix: true, locale: fr })}</span>
+                      </div>
+                    )}
+                    {(account as any).last_login_at && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Clock className="w-4 h-4 text-primary/70" />
+                        <span>Dernière connexion {formatDistanceToNow(new Date((account as any).last_login_at), { addSuffix: true, locale: fr })}</span>
+                      </div>
+                    )}
+                    {(account as any).pk && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Link className="w-4 h-4 text-primary/70" />
+                        <span className="font-mono text-xs">ID: {(account as any).pk}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center text-muted-foreground py-8">Account info not available.</div>
