@@ -77,15 +77,28 @@ def get_account(username: Optional[str] = Query(None)):
 
     try:
         user = cl.account_info()
+        # Fetch DB record for created_at
+        db_account = db_proxy.select_first("bot_accounts", {"username": (getattr(user, "username", "") or "").lower()})
         return {
             "username": getattr(user, "username", None),
             "full_name": getattr(user, "full_name", "") or "",
             "biography": getattr(user, "biography", "") or "",
             "profile_pic_url": str(getattr(user, "profile_pic_url", "") or "") or None,
+            "profile_pic_url_hd": str(getattr(user, "profile_pic_url_hd", "") or "") or None,
             "followers_count": getattr(user, "follower_count", 0) or 0,
             "following_count": getattr(user, "following_count", 0) or 0,
             "media_count": getattr(user, "media_count", 0) or 0,
             "is_private": bool(getattr(user, "is_private", False)),
+            "is_verified": bool(getattr(user, "is_verified", False)),
+            "is_business": bool(getattr(user, "is_business", False)),
+            "category": getattr(user, "category", None) or getattr(user, "category_name", None),
+            "public_email": getattr(user, "public_email", None) or None,
+            "public_phone": getattr(user, "public_phone_number", None) or getattr(user, "contact_phone_number", None) or None,
+            "external_url": getattr(user, "external_url", None) or None,
+            "account_type": getattr(user, "account_type", None),
+            "pk": str(getattr(user, "pk", "")) if getattr(user, "pk", None) else None,
+            "added_at": db_account.get("created_at") if db_account else None,
+            "last_login_at": db_account.get("last_login_at") if db_account else None,
         }
     except Exception as exc:
         detail = summarize_instagram_error(exc, context="account")

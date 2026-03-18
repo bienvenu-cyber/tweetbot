@@ -161,11 +161,17 @@ class MultiAccountManager:
             return False
 
     def _auto_reconnect(self, username: str) -> bool:
+        """LAST RESORT — full re-login with password. This can trigger challenges
+        and should ideally never be reached. Prefer cookie re-import instead."""
         from encryption import decrypt_password
         account = self._get_account(username)
         if not account or not account.get("encrypted_password"):
-            logger.warning(f"[RECONNECT] No password stored for @{username}")
+            logger.warning(f"[RECONNECT] No password stored for @{username} — cannot auto-reconnect. Re-import cookies.")
             return False
+        logger.warning(
+            f"[RECONNECT] ⚠️ Session restore FAILED for @{username}. "
+            f"Falling back to password login — this may trigger a challenge!"
+        )
         try:
             password = decrypt_password(account["encrypted_password"])
             cl = _create_client()
@@ -176,10 +182,10 @@ class MultiAccountManager:
                 "is_logged_in": True,
                 "last_login_at": datetime.now(timezone.utc).isoformat(),
             })
-            logger.info(f"[RECONNECT] Auto-reconnected @{username}")
+            logger.warning(f"[RECONNECT] ⚠️ Auto-reconnected @{username} via password (not ideal)")
             return True
         except Exception as e:
-            logger.error(f"[RECONNECT] Failed for @{username}: {e}")
+            logger.error(f"[RECONNECT] ❌ Password login FAILED for @{username}: {e}. User must re-import cookies.")
             return False
 
     # ---- Public API ----
