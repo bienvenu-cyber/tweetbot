@@ -247,7 +247,7 @@ class MultiAccountManager:
             self._save_account(username, self._clients[username], password)
             return {"success": True, "message": "Session reprise avec succès", "username": username}
 
-        cl = _create_client()
+        cl = _create_client(self._get_account(username).get("proxy_url") if self._get_account(username) else None)
         try:
             cl.login(username, password)
             self._clients[username] = cl
