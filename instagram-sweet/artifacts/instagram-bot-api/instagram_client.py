@@ -65,12 +65,18 @@ def _parse_cookie_string(cookie_str: str) -> dict:
 
 def _create_client() -> Client:
     cl = Client()
-    cl.delay_range = [1, 3]
+    cl.delay_range = [2, 5]
     cl.set_locale("fr_BJ")
     cl.set_timezone_offset(3600)
+    _apply_proxy(cl)
+    return cl
+
+
+def _apply_proxy(cl: Client):
+    """Apply global proxy to client. Must be called after set_settings() too."""
     if _proxy_url:
         cl.set_proxy(_proxy_url)
-    return cl
+        logger.info(f"[PROXY] Applied proxy to client: {_proxy_url[:30]}...")
 
 
 class MultiAccountManager:
@@ -135,6 +141,7 @@ class MultiAccountManager:
             settings = json.loads(account["session_data"])
             cl = _create_client()
             cl.set_settings(settings)
+            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
             # Don't call cl.login() — just inject session and verify with a light API call
             cl.init()
             user_info = cl.account_info()
@@ -318,6 +325,7 @@ class MultiAccountManager:
 
         try:
             cl.set_settings(settings)
+            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
             cl.login(username or cookies.get("ds_user_id", ""), "")
         except Exception:
             pass
