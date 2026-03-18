@@ -75,11 +75,15 @@ export function useSendDm() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: SendDmRequest): Promise<StatusMessage> => {
-      const res = await apiFetch(`${BOT_API_BASE}/dm/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      const res = await apiFetch(
+        `${BOT_API_BASE}/dm/send`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        },
+        120000,
+      );
       const result = await readApiPayload<StatusMessage>(res);
       if (!res.ok || !(result as StatusMessage | null)?.success) {
         throw new Error(getApiErrorMessage(result, "Failed to send DM"));
