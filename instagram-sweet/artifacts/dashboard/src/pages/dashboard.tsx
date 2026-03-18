@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Users, MessageCircle, Send, CheckCircle2, AlertCircle, Clock, Activity, Instagram } from "lucide-react";
+import { Users, MessageCircle, Send, CheckCircle2, AlertCircle, Clock, Activity, Instagram, Mail, Phone, Globe, BadgeCheck, Briefcase, Link, Calendar, Shield } from "lucide-react";
 import { useAccount } from "@/hooks/use-auth";
 import { useLogs } from "@/hooks/use-logs";
 import { useQueue } from "@/hooks/use-queue";
@@ -7,7 +7,8 @@ import { useSelectedAccount } from "@/hooks/use-selected-account";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AccountSelector } from "@/components/account-selector";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
+import { fr } from "date-fns/locale";
 
 export default function Dashboard() {
   const { selectedAccount, setSelectedAccount } = useSelectedAccount();
