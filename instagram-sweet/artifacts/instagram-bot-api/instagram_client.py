@@ -324,7 +324,7 @@ class MultiAccountManager:
         if not cookies.get("sessionid"):
             return {"success": False, "message": "Le cookie 'sessionid' est requis."}
 
-        cl = _create_client()
+        cl = _create_client()  # Cookie import uses global proxy
         settings = cl.get_settings()
         settings["cookies"] = cookies
         if mid: settings["mid"] = mid
