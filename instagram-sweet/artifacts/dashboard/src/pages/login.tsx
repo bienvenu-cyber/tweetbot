@@ -7,14 +7,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
   Bot, AlertTriangle, ShieldCheck, Loader2, Globe, RefreshCw,
-  CheckCircle2, Cookie, KeyRound, ChevronRight, Copy, ExternalLink
+  CheckCircle2, Cookie, KeyRound, ChevronRight, Copy, ExternalLink, Lock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useLogin, useAuthStatus } from "@/hooks/use-auth";
+import { useSavePassword } from "@/hooks/use-accounts";
 import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
