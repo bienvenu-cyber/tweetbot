@@ -312,6 +312,19 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                   <Button
                     size="icon"
                     variant="ghost"
+                    className="text-muted-foreground hover:text-primary h-8 w-8"
+                    title="Configurer proxy"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProxyEditing(proxyEditing === acc.username ? null : acc.username);
+                      setProxyValue(acc.proxy_url || "");
+                    }}
+                  >
+                    <Globe className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
                     className="text-muted-foreground hover:text-destructive h-8 w-8"
                     onClick={(e) => { e.stopPropagation(); handleRemove(acc.username); }}
                   >
@@ -319,6 +332,40 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                   </Button>
                 </div>
               </div>
+              {/* Inline proxy editor */}
+              {proxyEditing === acc.username && (
+                <div className="ml-13 p-3 rounded-lg bg-secondary/50 border border-border/50 space-y-2" onClick={(e) => e.stopPropagation()}>
+                  <Label className="text-xs">Proxy dédié pour @{acc.username}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="socks5://user:pass@host:port"
+                      value={proxyValue}
+                      onChange={(e) => setProxyValue(e.target.value)}
+                      className="bg-background/50 text-xs font-mono h-8 flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs"
+                      disabled={setAccountProxy.isPending}
+                      onClick={() => {
+                        setAccountProxy.mutate(
+                          { username: acc.username, proxy_url: proxyValue },
+                          {
+                            onSuccess: (data) => {
+                              toast({ title: "✓ Proxy mis à jour", description: data.message });
+                              setProxyEditing(null);
+                            },
+                            onError: (err) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+                          }
+                        );
+                      }}
+                    >
+                      {setAccountProxy.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Sauver"}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Laisse vide pour utiliser le proxy global. Format: socks5:// ou http://</p>
+                </div>
+              )}
             ))
           )}
         </CardContent>
