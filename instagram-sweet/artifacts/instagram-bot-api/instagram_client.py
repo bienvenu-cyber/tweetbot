@@ -63,20 +63,21 @@ def _parse_cookie_string(cookie_str: str) -> dict:
     return cookies
 
 
-def _create_client() -> Client:
+def _create_client(proxy_url: Optional[str] = None) -> Client:
     cl = Client()
     cl.delay_range = [2, 5]
     cl.set_locale("fr_BJ")
     cl.set_timezone_offset(3600)
-    _apply_proxy(cl)
+    _apply_proxy(cl, proxy_url)
     return cl
 
 
-def _apply_proxy(cl: Client):
-    """Apply global proxy to client. Must be called after set_settings() too."""
-    if _proxy_url:
-        cl.set_proxy(_proxy_url)
-        logger.info(f"[PROXY] Applied proxy to client: {_proxy_url[:30]}...")
+def _apply_proxy(cl: Client, account_proxy: Optional[str] = None):
+    """Apply per-account proxy if set, otherwise fall back to global proxy."""
+    proxy = account_proxy or _proxy_url
+    if proxy:
+        cl.set_proxy(proxy)
+        logger.info(f"[PROXY] Applied proxy to client: {proxy[:30]}... ({'per-account' if account_proxy else 'global'})")
 
 
 class MultiAccountManager:
@@ -137,11 +138,12 @@ class MultiAccountManager:
         account = self._get_account(username)
         if not account or not account.get("session_data"):
             return False
+        account_proxy = account.get("proxy_url") or None
         try:
             settings = json.loads(account["session_data"])
-            cl = _create_client()
+            cl = _create_client(account_proxy)
             cl.set_settings(settings)
-            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
+            _apply_proxy(cl, account_proxy)  # Re-apply proxy after set_settings overwrites it
             # Don't call cl.login() — just inject session and verify with a light API call
             cl.init()
             user_info = cl.account_info()
@@ -172,9 +174,10 @@ class MultiAccountManager:
             f"[RECONNECT] ⚠️ Session restore FAILED for @{username}. "
             f"Falling back to password login — this may trigger a challenge!"
         )
+        account_proxy = account.get("proxy_url") or None
         try:
             password = decrypt_password(account["encrypted_password"])
-            cl = _create_client()
+            cl = _create_client(account_proxy)
             cl.login(username, password)
             self._clients[username.lower()] = cl
             db_proxy.update("bot_accounts", account["id"], {
@@ -224,6 +227,7 @@ class MultiAccountManager:
                 "is_logged_in": a.get("username") in self._clients,
                 "last_login_at": a.get("last_login_at"),
                 "last_action_at": a.get("last_action_at"),
+                "proxy_url": a.get("proxy_url") or None,
             }
             for a in accounts
         ]
@@ -243,7 +247,7 @@ class MultiAccountManager:
             self._save_account(username, self._clients[username], password)
             return {"success": True, "message": "Session reprise avec succès", "username": username}
 
-        cl = _create_client()
+        cl = _create_client(self._get_account(username).get("proxy_url") if self._get_account(username) else None)
         try:
             cl.login(username, password)
             self._clients[username] = cl
@@ -320,7 +324,7 @@ class MultiAccountManager:
         if not cookies.get("sessionid"):
             return {"success": False, "message": "Le cookie 'sessionid' est requis."}
 
-        cl = _create_client()
+        cl = _create_client()  # Cookie import uses global proxy
         settings = cl.get_settings()
         settings["cookies"] = cookies
         if mid: settings["mid"] = mid

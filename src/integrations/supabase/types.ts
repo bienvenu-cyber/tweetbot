@@ -23,6 +23,7 @@ export type Database = {
           is_logged_in: boolean | null
           last_action_at: string | null
           last_login_at: string | null
+          proxy_url: string | null
           session_data: string | null
           updated_at: string | null
           username: string
@@ -35,6 +36,7 @@ export type Database = {
           is_logged_in?: boolean | null
           last_action_at?: string | null
           last_login_at?: string | null
+          proxy_url?: string | null
           session_data?: string | null
           updated_at?: string | null
           username: string
@@ -47,6 +49,7 @@ export type Database = {
           is_logged_in?: boolean | null
           last_action_at?: string | null
           last_login_at?: string | null
+          proxy_url?: string | null
           session_data?: string | null
           updated_at?: string | null
           username?: string

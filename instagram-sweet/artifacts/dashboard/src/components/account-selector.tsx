@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccounts, useToggleAccount, useRemoveAccount, type BotAccount } from "@/hooks/use-accounts";
+import { useAccounts, useToggleAccount, useRemoveAccount, useSetAccountProxy, type BotAccount } from "@/hooks/use-accounts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Trash2, Loader2, LogIn, Shield, Cookie, KeyRound, Globe, CheckCircle2, RefreshCw } from "lucide-react";
+import { Users, Plus, Trash2, Loader2, LogIn, Shield, Cookie, KeyRound, Globe, CheckCircle2, RefreshCw, Wifi } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { BOT_API_BASE, apiFetch } from "@/config";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,6 +35,10 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
   const { data: accounts = [], isLoading } = useAccounts();
   const toggleAccount = useToggleAccount();
   const removeAccount = useRemoveAccount();
+  const setAccountProxy = useSetAccountProxy();
+
+  const [proxyEditing, setProxyEditing] = useState<string | null>(null);
+  const [proxyValue, setProxyValue] = useState("");
 
   const [showAdd, setShowAdd] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("cookies");
@@ -279,7 +283,12 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">@{acc.username}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-foreground truncate">@{acc.username}</p>
+                    {acc.proxy_url && (
+                      <Wifi className="w-3 h-3 text-emerald-500" title="Proxy dédié" />
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {acc.last_action_at
                       ? `Actif ${formatDistanceToNow(new Date(acc.last_action_at), { addSuffix: true })}`
@@ -303,6 +312,19 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                   <Button
                     size="icon"
                     variant="ghost"
+                    className="text-muted-foreground hover:text-primary h-8 w-8"
+                    title="Configurer proxy"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProxyEditing(proxyEditing === acc.username ? null : acc.username);
+                      setProxyValue(acc.proxy_url || "");
+                    }}
+                  >
+                    <Globe className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
                     className="text-muted-foreground hover:text-destructive h-8 w-8"
                     onClick={(e) => { e.stopPropagation(); handleRemove(acc.username); }}
                   >
@@ -310,6 +332,40 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                   </Button>
                 </div>
               </div>
+              {/* Inline proxy editor */}
+              {proxyEditing === acc.username && (
+                <div className="ml-13 p-3 rounded-lg bg-secondary/50 border border-border/50 space-y-2" onClick={(e) => e.stopPropagation()}>
+                  <Label className="text-xs">Proxy dédié pour @{acc.username}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="socks5://user:pass@host:port"
+                      value={proxyValue}
+                      onChange={(e) => setProxyValue(e.target.value)}
+                      className="bg-background/50 text-xs font-mono h-8 flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs"
+                      disabled={setAccountProxy.isPending}
+                      onClick={() => {
+                        setAccountProxy.mutate(
+                          { username: acc.username, proxy_url: proxyValue },
+                          {
+                            onSuccess: (data) => {
+                              toast({ title: "✓ Proxy mis à jour", description: data.message });
+                              setProxyEditing(null);
+                            },
+                            onError: (err) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+                          }
+                        );
+                      }}
+                    >
+                      {setAccountProxy.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Sauver"}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Laisse vide pour utiliser le proxy global. Format: socks5:// ou http://</p>
+                </div>
+              )}
             ))
           )}
         </CardContent>

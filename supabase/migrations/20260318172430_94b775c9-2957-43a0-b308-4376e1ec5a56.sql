@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_accounts ADD COLUMN IF NOT EXISTS proxy_url text DEFAULT NULL;
