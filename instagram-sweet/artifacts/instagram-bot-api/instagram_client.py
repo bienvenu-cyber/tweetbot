@@ -141,6 +141,7 @@ class MultiAccountManager:
             settings = json.loads(account["session_data"])
             cl = _create_client()
             cl.set_settings(settings)
+            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
             # Don't call cl.login() — just inject session and verify with a light API call
             cl.init()
             user_info = cl.account_info()
