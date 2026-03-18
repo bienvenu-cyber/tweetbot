@@ -19,6 +19,61 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { BulkJobTracker } from "@/components/bulk-job-tracker";
 
+function ActiveAccountPicker({ accounts, selected, onSelect }: {
+  accounts: { username: string; is_logged_in: boolean }[];
+  selected: string | null;
+  onSelect: (u: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = accounts.find(a => a.username === selected) || accounts[0];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card hover:bg-secondary/50 transition-colors min-w-[180px]"
+      >
+        <div className="relative">
+          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+            {current?.username?.substring(0, 2).toUpperCase() || "?"}
+          </div>
+          {current?.is_logged_in && (
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card" />
+          )}
+        </div>
+        <div className="flex-1 text-left">
+          <p className="text-xs text-muted-foreground">Compte actif</p>
+          <p className="text-sm font-semibold text-foreground truncate">
+            {current ? `@${current.username}` : "Aucun"}
+          </p>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-full min-w-[220px] rounded-xl border border-border bg-card shadow-lg py-1">
+          {accounts.map(acc => (
+            <button
+              key={acc.username}
+              onClick={() => { onSelect(acc.username); setOpen(false); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
+                acc.username === selected ? "bg-primary/10 text-primary" : "hover:bg-secondary/50 text-foreground"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${acc.is_logged_in ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+              <span className="text-sm font-medium truncate">@{acc.username}</span>
+              {acc.username === selected && <CheckCircle2 className="w-3.5 h-3.5 ml-auto text-primary" />}
+            </button>
+          ))}
+          {accounts.length === 0 && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">Aucun compte disponible</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const singleDmSchema = z.object({
   username: z.string().min(1, "Username is required"),
   message: z.string().min(1, "Message is required"),
