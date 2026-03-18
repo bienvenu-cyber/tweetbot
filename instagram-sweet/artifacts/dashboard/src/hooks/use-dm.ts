@@ -34,7 +34,8 @@ export function useDmThreads(amount: number = 20, accountUsername?: string) {
       if (!res.ok) throw new Error(getApiErrorMessage(payload, "Failed to fetch threads"));
       return (payload ?? { threads: [], total: 0 }) as DmThreadList;
     },
-    retry: 1,
+    retry: 0,
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }
@@ -69,8 +70,9 @@ export function useFollowers(
       return (payload ?? { followers: [], total: 0 }) as { followers: FollowerInfo[]; total: number };
     },
     enabled,
-    retry: 1,
+    retry: 0,
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
