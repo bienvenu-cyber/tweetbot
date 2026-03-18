@@ -16,13 +16,14 @@ def _resolve_target_user(cl, account_username: str):
 
     logger.info(f"[FOLLOWERS] Looking up @{target_username} via active client")
 
-    resolvers = [
+    resolvers = []
+    if hasattr(cl, "user_info_by_username_v1"):
+        resolvers.append(lambda: cl.user_info_by_username_v1(target_username))
+
+    resolvers.extend([
         lambda: cl.user_info_by_username(target_username),
         lambda: cl.user_info(cl.user_id_from_username(target_username)),
-    ]
-
-    if hasattr(cl, "user_info_by_username_v1"):
-        resolvers.insert(1, lambda: cl.user_info_by_username_v1(target_username))
+    ])
 
     for resolver in resolvers:
         try:

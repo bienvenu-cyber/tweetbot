@@ -1,16 +1,23 @@
 import asyncio
 import json
-import random
 import logging
+import random
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
 
+from dm_guard import (
+    get_cooldown_message,
+    register_dm_failure,
+    register_dm_success,
+    should_back_off_for_dm_error,
+    wait_before_dm_action,
+)
 from instagram_client import account_manager
-import db_proxy
-from utils import get_daily_count, log_action
-from routers.ws import broadcast_job_update
 from instagram_errors import normalize_username, normalize_usernames, summarize_instagram_error, is_rate_limited
+from routers.ws import broadcast_job_update
+from utils import get_daily_count, log_action
+import db_proxy
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,13 +43,14 @@ def _resolve_recipient_id(cl, username: str) -> int:
     clean_username = normalize_username(username)
     last_error: Exception | None = None
 
-    resolvers = [
-        lambda: cl.user_id_from_username(clean_username),
-        lambda: getattr(cl.user_info_by_username(clean_username), "pk", None),
-    ]
-
+    resolvers = []
     if hasattr(cl, "user_info_by_username_v1"):
-        resolvers.insert(1, lambda: getattr(cl.user_info_by_username_v1(clean_username), "pk", None))
+        resolvers.append(lambda: getattr(cl.user_info_by_username_v1(clean_username), "pk", None))
+
+    resolvers.extend([
+        lambda: getattr(cl.user_info_by_username(clean_username), "pk", None),
+        lambda: cl.user_id_from_username(clean_username),
+    ])
 
     for resolver in resolvers:
         try:
@@ -89,7 +97,13 @@ def get_threads(amount: int = Query(20), account_username: Optional[str] = Query
     cl = account_manager.get_client(account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
+
+    cooldown_message = get_cooldown_message(account_username, "inbox")
+    if cooldown_message:
+        raise HTTPException(status_code=429, detail=cooldown_message)
+
     try:
+        wait_before_dm_action(account_username, "inbox")
         threads = cl.direct_threads(amount=amount)
         result = []
         for t in threads:
@@ -106,11 +120,15 @@ def get_threads(amount: int = Query(20), account_username: Optional[str] = Query
                 "last_seen_at": t.last_seen_at.isoformat() if hasattr(t, "last_seen_at") and t.last_seen_at else None,
                 "unread": t.unread_count > 0 if hasattr(t, "unread_count") else False,
             })
+        register_dm_success(account_username, "inbox")
         return {"threads": result, "total": len(result)}
     except Exception as exc:
         detail = summarize_instagram_error(exc, context="dm_threads")
+        if should_back_off_for_dm_error(exc) or should_back_off_for_dm_error(detail):
+            detail = register_dm_failure(account_username, "inbox", detail)
         logger.error(f"Error fetching threads: {exc}")
-        raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
+        status_code = 429 if is_rate_limited(exc) or should_back_off_for_dm_error(exc) or should_back_off_for_dm_error(detail) else 503
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.post("/send")
@@ -119,6 +137,10 @@ def send_dm(req: SendDmRequest):
     cl = account_manager.get_client(req.account_username)
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
+
+    cooldown_message = get_cooldown_message(req.account_username, "send")
+    if cooldown_message:
+        raise HTTPException(status_code=429, detail=cooldown_message)
 
     settings = db_proxy.select_first("bot_settings", {"id": "1"})
     daily_limit = settings.get("dm_daily_limit", 50) if settings else 50
@@ -129,14 +151,19 @@ def send_dm(req: SendDmRequest):
         raise HTTPException(status_code=429, detail=f"Daily DM limit reached ({daily_limit})")
 
     try:
+        wait_before_dm_action(req.account_username, "send")
         user_id = _resolve_recipient_id(cl, clean_username)
         cl.direct_send(req.message, user_ids=[int(user_id)])
+        register_dm_success(req.account_username, "send")
         log_action("dm_send", clean_username, "success", f"DM sent: {req.message[:50]}", account_username=req.account_username)
         return {"success": True, "message": f"DM sent to @{clean_username}"}
     except Exception as exc:
         detail = summarize_instagram_error(exc, context="dm_send")
+        if should_back_off_for_dm_error(exc) or should_back_off_for_dm_error(detail):
+            detail = register_dm_failure(req.account_username, "send", detail)
         log_action("dm_send", clean_username, "failed", detail, account_username=req.account_username)
-        raise HTTPException(status_code=429 if is_rate_limited(exc) else 503, detail=detail)
+        status_code = 429 if is_rate_limited(exc) or should_back_off_for_dm_error(exc) or should_back_off_for_dm_error(detail) else 503
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: int, delay_max: int, account_username: Optional[str], skip_already_sent: bool = True, start_index: int = 0):
@@ -164,7 +191,6 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
     consecutive_send_failures = 0
 
     for index, username in enumerate(usernames):
-        # Skip already-processed entries on resume
         if index < start_index:
             continue
 
@@ -203,17 +229,28 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
             stop_reason = f"Arrêt à la limite quotidienne ({daily_limit})."
             break
 
+        cooldown_message = get_cooldown_message(account_username, "send")
+        if cooldown_message:
+            stop_reason = cooldown_message
+            break
+
         try:
+            wait_before_dm_action(account_username, "send")
             user_id = _resolve_recipient_id(cl, username)
             cl.direct_send(message, user_ids=[int(user_id)])
             succeeded += 1
             already_sent.add(username)
             consecutive_send_failures = 0
+            register_dm_success(account_username, "send")
         except Exception as exc:
             failed += 1
             last_error = summarize_instagram_error(exc, context="dm_send")
 
-            if _is_dm_blocked_error(exc):
+            if should_back_off_for_dm_error(exc) or should_back_off_for_dm_error(last_error):
+                last_error = register_dm_failure(account_username, "send", last_error)
+                stop_reason = last_error
+                consecutive_send_failures += 1
+            elif _is_dm_blocked_error(exc):
                 consecutive_send_failures += 1
                 if consecutive_send_failures >= MAX_CONSECUTIVE_SEND_FAILURES:
                     stop_reason = (
@@ -221,7 +258,6 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
                         f"({consecutive_send_failures} échecs consécutifs). "
                         f"Réimporte les cookies du compte puis réessaie."
                     )
-                    break
             else:
                 consecutive_send_failures = 0
 
@@ -233,6 +269,9 @@ def _bulk_send_sync(job_id: int, usernames: List[str], message: str, delay_min: 
             "message": f"{processed}/{len(usernames)} traités",
         })
         _broadcast_sync(job_id, updated)
+
+        if stop_reason:
+            break
 
         if index < len(usernames) - 1:
             time.sleep(random.randint(delay_min, delay_max))

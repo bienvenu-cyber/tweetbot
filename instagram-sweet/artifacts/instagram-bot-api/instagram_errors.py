@@ -33,6 +33,18 @@ def summarize_instagram_error(error: Exception | str, context: str | None = None
     if is_rate_limited(raw):
         return "Instagram limite temporairement les requêtes pour cette session. Attends quelques minutes puis réessaie."
 
+    if "feedback_required" in lowered or "spam" in lowered:
+        return (
+            "Instagram a temporairement restreint cette action DM pour cette session. "
+            "Attends un moment, réouvre Instagram sur mobile, puis réimporte les cookies si besoin."
+        )
+
+    if "defcon" in lowered:
+        return (
+            "Instagram a placé la messagerie de cette session en mode de protection temporaire. "
+            "Laisse reposer le compte puis réimporte des cookies frais depuis l'app ou le navigateur habituel."
+        )
+
     if "direct_v2/inbox" in lowered:
         return (
             "Instagram refuse actuellement l'accès à la boîte de réception DM depuis cette session. "
