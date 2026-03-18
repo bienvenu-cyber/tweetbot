@@ -227,6 +227,7 @@ class MultiAccountManager:
                 "is_logged_in": a.get("username") in self._clients,
                 "last_login_at": a.get("last_login_at"),
                 "last_action_at": a.get("last_action_at"),
+                "proxy_url": a.get("proxy_url") or None,
             }
             for a in accounts
         ]
