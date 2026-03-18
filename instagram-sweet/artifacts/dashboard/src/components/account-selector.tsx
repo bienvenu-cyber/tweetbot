@@ -283,7 +283,12 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">@{acc.username}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-foreground truncate">@{acc.username}</p>
+                    {acc.proxy_url && (
+                      <Wifi className="w-3 h-3 text-emerald-500" title="Proxy dédié" />
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {acc.last_action_at
                       ? `Actif ${formatDistanceToNow(new Date(acc.last_action_at), { addSuffix: true })}`
