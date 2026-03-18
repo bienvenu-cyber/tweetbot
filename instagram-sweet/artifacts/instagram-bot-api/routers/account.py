@@ -171,6 +171,31 @@ class SavePasswordRequest(BaseModel):
     password: str
 
 
+class SetProxyRequest(BaseModel):
+    proxy_url: Optional[str] = None
+
+
+@router.patch("/{username}/proxy")
+def set_account_proxy(username: str, req: SetProxyRequest):
+    """Set or clear a per-account proxy URL."""
+    username = username.strip().lstrip("@").lower()
+    account = db_proxy.select_first("bot_accounts", {"username": username})
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account @{username} not found")
+    
+    proxy_val = req.proxy_url.strip() if req.proxy_url and req.proxy_url.strip() else None
+    db_proxy.update("bot_accounts", account["id"], {"proxy_url": proxy_val})
+    
+    # If this account has an active client, re-apply proxy
+    from instagram_client import account_manager, _apply_proxy
+    cl = account_manager._clients.get(username)
+    if cl and proxy_val:
+        _apply_proxy(cl, proxy_val)
+    
+    logger.info(f"[ACCOUNT] Proxy {'set' if proxy_val else 'cleared'} for @{username}")
+    return {"success": True, "message": f"Proxy {'configuré' if proxy_val else 'supprimé'} pour @{username}", "proxy_url": proxy_val}
+
+
 @router.post("/save-password")
 def save_password(req: SavePasswordRequest):
     """Save/update encrypted password for an existing account (for auto-reconnect)."""
