@@ -165,13 +165,16 @@ class MultiAccountManager:
         account_proxy = account.get("proxy_url") or None
         try:
             settings = json.loads(account["session_data"])
-            cl = _create_client(account_proxy)
-            cl.set_settings(settings)
-            _apply_proxy(cl, account_proxy)  # Re-apply proxy after set_settings overwrites it
-            # Don't call cl.login() — just inject session and verify with a light API call
+            # Restore with full saved identity (device + cookies + UUIDs)
+            cl = _create_client(
+                proxy_url=account_proxy,
+                saved_settings=settings,
+                username=username,
+            )
             cl.init()
             user_info = cl.account_info()
-            logger.info(f"[SESSION] Verified session for @{username} (uid={user_info.pk})")
+            device_label = get_device_label(settings) or "unknown"
+            logger.info(f"[SESSION] Verified session for @{username} (uid={user_info.pk}, device={device_label})")
             self._clients[username.lower()] = cl
             # Re-save refreshed session data
             refreshed = json.dumps(cl.get_settings(), default=str)
