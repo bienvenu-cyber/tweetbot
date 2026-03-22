@@ -254,17 +254,25 @@ class MultiAccountManager:
 
     def list_accounts(self) -> list:
         accounts = db_proxy.select("bot_accounts", order="created_at.asc")
-        return [
-            {
+        result = []
+        for a in accounts:
+            device_label = None
+            if a.get("session_data"):
+                try:
+                    settings = json.loads(a["session_data"])
+                    device_label = get_device_label(settings)
+                except Exception:
+                    pass
+            result.append({
                 "username": a.get("username"),
                 "is_active": a.get("is_active"),
                 "is_logged_in": a.get("username") in self._clients,
                 "last_login_at": a.get("last_login_at"),
                 "last_action_at": a.get("last_action_at"),
                 "proxy_url": a.get("proxy_url") or None,
-            }
-            for a in accounts
-        ]
+                "device": device_label,
+            })
+        return result
 
     def login(self, username: str, password: str) -> dict:
         username = username.strip().lstrip("@").lower()
