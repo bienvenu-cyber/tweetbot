@@ -289,7 +289,14 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                       <Wifi className="w-3 h-3 text-emerald-500" title="Proxy dédié" />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    {acc.device && (
+                      <>
+                        <Smartphone className="w-3 h-3" />
+                        <span className="truncate max-w-[120px]">{acc.device}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                      </>
+                    )}
                     {acc.last_action_at
                       ? `Actif ${formatDistanceToNow(new Date(acc.last_action_at), { addSuffix: true })}`
                       : "Aucune activité"}
