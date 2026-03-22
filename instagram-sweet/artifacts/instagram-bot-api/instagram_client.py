@@ -64,12 +64,35 @@ def _parse_cookie_string(cookie_str: str) -> dict:
     return cookies
 
 
-def _create_client(proxy_url: Optional[str] = None) -> Client:
+def _create_client(
+    proxy_url: Optional[str] = None,
+    saved_settings: Optional[dict] = None,
+    username: Optional[str] = None,
+) -> Client:
+    """Create a Client with persistent identity.
+
+    - If saved_settings exist: restore everything (cookies + device + UUIDs).
+    - If new account: assign a device from the pool based on username hash.
+    - NEVER regenerate device settings for an existing account.
+    """
     cl = Client()
     cl.delay_range = [2, 5]
-    cl.set_locale("fr_BJ")
-    cl.set_timezone_offset(3600)
-    _apply_proxy(cl, proxy_url)
+
+    if saved_settings:
+        # Restore full identity: device, UUIDs, cookies — everything
+        cl.set_settings(saved_settings)
+        _apply_proxy(cl, proxy_url)  # Re-apply proxy after set_settings overwrites it
+        device_label = get_device_label(saved_settings) or "restored"
+        logger.info(f"[DEVICE] Restored saved identity: {device_label}")
+    else:
+        # New account — assign a unique device from pool
+        if username:
+            device = pick_device_for_account(username)
+            cl.set_device_settings(device)
+        cl.set_locale("fr_BJ")
+        cl.set_timezone_offset(3600)
+        _apply_proxy(cl, proxy_url)
+
     return cl
 
 
