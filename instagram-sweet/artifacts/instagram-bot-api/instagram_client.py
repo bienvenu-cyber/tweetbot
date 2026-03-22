@@ -17,6 +17,7 @@ from instagrapi.exceptions import (
 from datetime import datetime, timezone
 
 import db_proxy
+from device_pool import pick_device_for_account, get_device_label
 
 logger = logging.getLogger("instagram_bot")
 
