@@ -165,6 +165,12 @@ class MultiAccountManager:
         account_proxy = account.get("proxy_url") or None
         try:
             settings = json.loads(account["session_data"])
+            # If old session has no device_settings, inject one from the pool
+            if not settings.get("device_settings"):
+                from device_pool import pick_device_for_account
+                device = pick_device_for_account(username)
+                settings["device_settings"] = device
+                logger.info(f"[DEVICE] Injected device into legacy session for @{username}")
             # Restore with full saved identity (device + cookies + UUIDs)
             cl = _create_client(
                 proxy_url=account_proxy,
