@@ -367,7 +367,21 @@ class MultiAccountManager:
         if not cookies.get("sessionid"):
             return {"success": False, "message": "Le cookie 'sessionid' est requis."}
 
-        cl = _create_client()  # Cookie import uses global proxy
+        # For cookie import, try to load existing device settings for this username
+        hint_username = username or cookies.get("ds_user_id", "")
+        existing_account = self._get_account(hint_username) if hint_username else None
+        saved_settings = None
+        if existing_account and existing_account.get("session_data"):
+            try:
+                saved_settings = json.loads(existing_account["session_data"])
+            except Exception:
+                pass
+
+        cl = _create_client(
+            proxy_url=existing_account.get("proxy_url") if existing_account else None,
+            saved_settings=saved_settings,
+            username=hint_username or None,
+        )
         settings = cl.get_settings()
         settings["cookies"] = cookies
         if mid: settings["mid"] = mid
@@ -378,8 +392,8 @@ class MultiAccountManager:
 
         try:
             cl.set_settings(settings)
-            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
-            cl.login(username or cookies.get("ds_user_id", ""), "")
+            _apply_proxy(cl, existing_account.get("proxy_url") if existing_account else None)
+            cl.login(hint_username, "")
         except Exception:
             pass
 
