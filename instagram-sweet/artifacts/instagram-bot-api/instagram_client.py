@@ -281,7 +281,16 @@ class MultiAccountManager:
             self._save_account(username, self._clients[username], password)
             return {"success": True, "message": "Session reprise avec succès", "username": username}
 
-        cl = _create_client(self._get_account(username).get("proxy_url") if self._get_account(username) else None)
+        existing_account = self._get_account(username)
+        account_proxy = existing_account.get("proxy_url") if existing_account else None
+        # Load existing device settings if available
+        saved_settings = None
+        if existing_account and existing_account.get("session_data"):
+            try:
+                saved_settings = json.loads(existing_account["session_data"])
+            except Exception:
+                pass
+        cl = _create_client(proxy_url=account_proxy, saved_settings=saved_settings, username=username)
         try:
             cl.login(username, password)
             self._clients[username] = cl
