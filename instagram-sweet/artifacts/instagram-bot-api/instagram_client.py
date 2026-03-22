@@ -17,6 +17,7 @@ from instagrapi.exceptions import (
 from datetime import datetime, timezone
 
 import db_proxy
+from device_pool import pick_device_for_account, get_device_label
 
 logger = logging.getLogger("instagram_bot")
 
@@ -63,12 +64,35 @@ def _parse_cookie_string(cookie_str: str) -> dict:
     return cookies
 
 
-def _create_client(proxy_url: Optional[str] = None) -> Client:
+def _create_client(
+    proxy_url: Optional[str] = None,
+    saved_settings: Optional[dict] = None,
+    username: Optional[str] = None,
+) -> Client:
+    """Create a Client with persistent identity.
+
+    - If saved_settings exist: restore everything (cookies + device + UUIDs).
+    - If new account: assign a device from the pool based on username hash.
+    - NEVER regenerate device settings for an existing account.
+    """
     cl = Client()
     cl.delay_range = [2, 5]
-    cl.set_locale("fr_BJ")
-    cl.set_timezone_offset(3600)
-    _apply_proxy(cl, proxy_url)
+
+    if saved_settings:
+        # Restore full identity: device, UUIDs, cookies — everything
+        cl.set_settings(saved_settings)
+        _apply_proxy(cl, proxy_url)  # Re-apply proxy after set_settings overwrites it
+        device_label = get_device_label(saved_settings) or "restored"
+        logger.info(f"[DEVICE] Restored saved identity: {device_label}")
+    else:
+        # New account — assign a unique device from pool
+        if username:
+            device = pick_device_for_account(username)
+            cl.set_device_settings(device)
+        cl.set_locale("fr_BJ")
+        cl.set_timezone_offset(3600)
+        _apply_proxy(cl, proxy_url)
+
     return cl
 
 
@@ -141,13 +165,16 @@ class MultiAccountManager:
         account_proxy = account.get("proxy_url") or None
         try:
             settings = json.loads(account["session_data"])
-            cl = _create_client(account_proxy)
-            cl.set_settings(settings)
-            _apply_proxy(cl, account_proxy)  # Re-apply proxy after set_settings overwrites it
-            # Don't call cl.login() — just inject session and verify with a light API call
+            # Restore with full saved identity (device + cookies + UUIDs)
+            cl = _create_client(
+                proxy_url=account_proxy,
+                saved_settings=settings,
+                username=username,
+            )
             cl.init()
             user_info = cl.account_info()
-            logger.info(f"[SESSION] Verified session for @{username} (uid={user_info.pk})")
+            device_label = get_device_label(settings) or "unknown"
+            logger.info(f"[SESSION] Verified session for @{username} (uid={user_info.pk}, device={device_label})")
             self._clients[username.lower()] = cl
             # Re-save refreshed session data
             refreshed = json.dumps(cl.get_settings(), default=str)
@@ -175,9 +202,16 @@ class MultiAccountManager:
             f"Falling back to password login — this may trigger a challenge!"
         )
         account_proxy = account.get("proxy_url") or None
+        # Try to load existing device settings even for password fallback
+        saved_settings = None
+        if account.get("session_data"):
+            try:
+                saved_settings = json.loads(account["session_data"])
+            except Exception:
+                pass
         try:
             password = decrypt_password(account["encrypted_password"])
-            cl = _create_client(account_proxy)
+            cl = _create_client(proxy_url=account_proxy, saved_settings=saved_settings, username=username)
             cl.login(username, password)
             self._clients[username.lower()] = cl
             db_proxy.update("bot_accounts", account["id"], {
@@ -220,17 +254,25 @@ class MultiAccountManager:
 
     def list_accounts(self) -> list:
         accounts = db_proxy.select("bot_accounts", order="created_at.asc")
-        return [
-            {
+        result = []
+        for a in accounts:
+            device_label = None
+            if a.get("session_data"):
+                try:
+                    settings = json.loads(a["session_data"])
+                    device_label = get_device_label(settings)
+                except Exception:
+                    pass
+            result.append({
                 "username": a.get("username"),
                 "is_active": a.get("is_active"),
                 "is_logged_in": a.get("username") in self._clients,
                 "last_login_at": a.get("last_login_at"),
                 "last_action_at": a.get("last_action_at"),
                 "proxy_url": a.get("proxy_url") or None,
-            }
-            for a in accounts
-        ]
+                "device": device_label,
+            })
+        return result
 
     def login(self, username: str, password: str) -> dict:
         username = username.strip().lstrip("@").lower()
@@ -247,7 +289,16 @@ class MultiAccountManager:
             self._save_account(username, self._clients[username], password)
             return {"success": True, "message": "Session reprise avec succès", "username": username}
 
-        cl = _create_client(self._get_account(username).get("proxy_url") if self._get_account(username) else None)
+        existing_account = self._get_account(username)
+        account_proxy = existing_account.get("proxy_url") if existing_account else None
+        # Load existing device settings if available
+        saved_settings = None
+        if existing_account and existing_account.get("session_data"):
+            try:
+                saved_settings = json.loads(existing_account["session_data"])
+            except Exception:
+                pass
+        cl = _create_client(proxy_url=account_proxy, saved_settings=saved_settings, username=username)
         try:
             cl.login(username, password)
             self._clients[username] = cl
@@ -324,7 +375,21 @@ class MultiAccountManager:
         if not cookies.get("sessionid"):
             return {"success": False, "message": "Le cookie 'sessionid' est requis."}
 
-        cl = _create_client()  # Cookie import uses global proxy
+        # For cookie import, try to load existing device settings for this username
+        hint_username = username or cookies.get("ds_user_id", "")
+        existing_account = self._get_account(hint_username) if hint_username else None
+        saved_settings = None
+        if existing_account and existing_account.get("session_data"):
+            try:
+                saved_settings = json.loads(existing_account["session_data"])
+            except Exception:
+                pass
+
+        cl = _create_client(
+            proxy_url=existing_account.get("proxy_url") if existing_account else None,
+            saved_settings=saved_settings,
+            username=hint_username or None,
+        )
         settings = cl.get_settings()
         settings["cookies"] = cookies
         if mid: settings["mid"] = mid
@@ -335,8 +400,8 @@ class MultiAccountManager:
 
         try:
             cl.set_settings(settings)
-            _apply_proxy(cl)  # Re-apply proxy after set_settings overwrites it
-            cl.login(username or cookies.get("ds_user_id", ""), "")
+            _apply_proxy(cl, existing_account.get("proxy_url") if existing_account else None)
+            cl.login(hint_username, "")
         except Exception:
             pass
 
