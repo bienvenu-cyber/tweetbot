@@ -202,9 +202,16 @@ class MultiAccountManager:
             f"Falling back to password login — this may trigger a challenge!"
         )
         account_proxy = account.get("proxy_url") or None
+        # Try to load existing device settings even for password fallback
+        saved_settings = None
+        if account.get("session_data"):
+            try:
+                saved_settings = json.loads(account["session_data"])
+            except Exception:
+                pass
         try:
             password = decrypt_password(account["encrypted_password"])
-            cl = _create_client(account_proxy)
+            cl = _create_client(proxy_url=account_proxy, saved_settings=saved_settings, username=username)
             cl.login(username, password)
             self._clients[username.lower()] = cl
             db_proxy.update("bot_accounts", account["id"], {
