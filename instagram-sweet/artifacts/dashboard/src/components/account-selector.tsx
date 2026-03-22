@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Trash2, Loader2, LogIn, Shield, Cookie, KeyRound, Globe, CheckCircle2, RefreshCw, Wifi } from "lucide-react";
+import { Users, Plus, Trash2, Loader2, LogIn, Shield, Cookie, KeyRound, Globe, CheckCircle2, RefreshCw, Wifi, Smartphone } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { BOT_API_BASE, apiFetch } from "@/config";
 import { useQueryClient } from "@tanstack/react-query";
@@ -289,7 +289,14 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                       <Wifi className="w-3 h-3 text-emerald-500" title="Proxy dédié" />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    {acc.device && (
+                      <>
+                        <Smartphone className="w-3 h-3" />
+                        <span className="truncate max-w-[120px]">{acc.device}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                      </>
+                    )}
                     {acc.last_action_at
                       ? `Actif ${formatDistanceToNow(new Date(acc.last_action_at), { addSuffix: true })}`
                       : "Aucune activité"}
