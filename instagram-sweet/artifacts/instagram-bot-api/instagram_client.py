@@ -139,6 +139,13 @@ class MultiAccountManager:
                 "is_active": True,
             }
             db_proxy.insert("bot_accounts", row)
+            # Auto-start warmup for new accounts
+            try:
+                from warmup import start_warmup
+                start_warmup(username)
+                logger.info(f"[WARMUP] Auto-started for new account @{username}")
+            except Exception as e:
+                logger.warning(f"[WARMUP] Auto-start failed for @{username}: {e}")
         logger.info(f"[ACCOUNT] Saved account {username}")
 
     def _mark_logged_out(self, username: str):
