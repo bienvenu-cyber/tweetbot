@@ -20,6 +20,7 @@ import db_proxy
 from instagram_client import set_global_proxy, account_manager
 from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
+from routers.warmup import router as warmup_router
 from routers.ws import router as ws_router
 
 ALLOWED_ORIGINS = [
