@@ -37,6 +37,8 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
   const toggleAccount = useToggleAccount();
   const removeAccount = useRemoveAccount();
   const setAccountProxy = useSetAccountProxy();
+  const startWarmup = useStartWarmup();
+  const stopWarmup = useStopWarmup();
 
   const [proxyEditing, setProxyEditing] = useState<string | null>(null);
   const [proxyValue, setProxyValue] = useState("");
