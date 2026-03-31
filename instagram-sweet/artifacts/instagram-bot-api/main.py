@@ -60,10 +60,13 @@ async def lifespan(app: FastAPI):
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from scheduler import process_scheduled_posts
+        from warmup import run_warmup_cycle
         sched = AsyncIOScheduler()
         sched.add_job(process_scheduled_posts, "interval", seconds=60, id="post_scheduler")
+        # Warmup cycle every 45 min (randomized in engine)
+        sched.add_job(run_warmup_cycle, "interval", minutes=45, id="warmup_cycle")
         sched.start()
-        logger.info("[SCHEDULER] Post scheduler started (every 60s)")
+        logger.info("[SCHEDULER] Post scheduler + warmup cycle started")
     except Exception as e:
         logger.error(f"[SCHEDULER] Failed to start: {e}")
 
