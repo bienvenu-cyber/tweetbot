@@ -138,6 +138,17 @@ def send_dm(req: SendDmRequest):
     if not cl:
         raise HTTPException(status_code=401, detail="Not logged in")
 
+    # Warmup warning
+    from warmup import get_warmup_dm_limit
+    warmup_limit = get_warmup_dm_limit(req.account_username or "")
+    warmup_warning = None
+    if warmup_limit is not None:
+        from warmup import get_warmup_info
+        info = get_warmup_info(req.account_username or "")
+        warmup_warning = f"⚠️ Warm-up actif (jour {info['day']}/7) — limite recommandée: {warmup_limit} DMs/jour"
+        if warmup_limit == 0:
+            warmup_warning = f"⚠️ Warm-up jour {info['day']}/7 — DMs déconseillés (phase de chauffe initiale)"
+
     cooldown_message = get_cooldown_message(req.account_username, "send")
     if cooldown_message:
         raise HTTPException(status_code=429, detail=cooldown_message)

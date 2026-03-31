@@ -277,6 +277,9 @@ class MultiAccountManager:
                 "last_action_at": a.get("last_action_at"),
                 "proxy_url": a.get("proxy_url") or None,
                 "device": device_label,
+                "warmup_status": a.get("warmup_status", "idle"),
+                "warmup_day": a.get("warmup_day", 0),
+                "warmup_started_at": a.get("warmup_started_at"),
             })
         return result
 

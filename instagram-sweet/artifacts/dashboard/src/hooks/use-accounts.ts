@@ -11,6 +11,9 @@ export interface BotAccount {
   created_at: string;
   proxy_url: string | null;
   device: string | null;
+  warmup_status: "idle" | "active" | "completed";
+  warmup_day: number;
+  warmup_started_at: string | null;
 }
 
 export function useAccounts() {

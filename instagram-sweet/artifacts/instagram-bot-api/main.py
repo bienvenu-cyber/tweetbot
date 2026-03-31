@@ -118,6 +118,7 @@ app.include_router(posts.router, prefix="/bot-api/posts", tags=["posts"])
 app.include_router(queue.router, prefix="/bot-api/queue", tags=["queue"])
 app.include_router(logs.router, prefix="/bot-api/logs", tags=["logs"])
 app.include_router(settings.router, prefix="/bot-api/settings", tags=["settings"])
+app.include_router(warmup_router, prefix="/bot-api/warmup", tags=["warmup"])
 
 # WebSocket routes
 app.include_router(ws_router, prefix="/bot-api", tags=["websocket"])
