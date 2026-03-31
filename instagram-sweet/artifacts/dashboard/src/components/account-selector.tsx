@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAccounts, useToggleAccount, useRemoveAccount, useSetAccountProxy, type BotAccount } from "@/hooks/use-accounts";
+import { useStartWarmup, useStopWarmup } from "@/hooks/use-warmup";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Trash2, Loader2, LogIn, Shield, Cookie, KeyRound, Globe, CheckCircle2, RefreshCw, Wifi, Smartphone } from "lucide-react";
+import { Users, Plus, Trash2, Loader2, LogIn, Shield, Cookie, KeyRound, Globe, CheckCircle2, RefreshCw, Wifi, Smartphone, Flame, Square } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { BOT_API_BASE, apiFetch } from "@/config";
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,6 +37,8 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
   const toggleAccount = useToggleAccount();
   const removeAccount = useRemoveAccount();
   const setAccountProxy = useSetAccountProxy();
+  const startWarmup = useStartWarmup();
+  const stopWarmup = useStopWarmup();
 
   const [proxyEditing, setProxyEditing] = useState<string | null>(null);
   const [proxyValue, setProxyValue] = useState("");
@@ -304,6 +307,40 @@ export function AccountSelector({ selected, onSelect }: AccountSelectorProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {/* Warmup badge */}
+                  {acc.warmup_status === "active" && (
+                    <Badge variant="outline" className="text-orange-500 border-orange-500/30 text-xs gap-1">
+                      <Flame className="w-3 h-3" />
+                      J{acc.warmup_day}/7
+                    </Badge>
+                  )}
+                  {acc.warmup_status === "completed" && (
+                    <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-xs gap-1">
+                      <Flame className="w-3 h-3" />
+                      Prêt
+                    </Badge>
+                  )}
+                  {/* Warmup toggle button */}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={`h-8 w-8 ${acc.warmup_status === "active" ? "text-orange-500 hover:text-orange-600" : "text-muted-foreground hover:text-orange-500"}`}
+                    title={acc.warmup_status === "active" ? "Arrêter warm-up" : "Démarrer warm-up"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (acc.warmup_status === "active") {
+                        stopWarmup.mutate(acc.username, {
+                          onSuccess: (data) => toast({ title: "Warm-up arrêté", description: data.message }),
+                        });
+                      } else {
+                        startWarmup.mutate(acc.username, {
+                          onSuccess: (data) => toast({ title: "🔥 Warm-up démarré", description: data.message }),
+                        });
+                      }
+                    }}
+                  >
+                    {acc.warmup_status === "active" ? <Square className="w-4 h-4" /> : <Flame className="w-4 h-4" />}
+                  </Button>
                   {acc.is_logged_in ? (
                     <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-xs">En ligne</Badge>
                   ) : (

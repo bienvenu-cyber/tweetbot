@@ -27,6 +27,9 @@ export type Database = {
           session_data: string | null
           updated_at: string | null
           username: string
+          warmup_day: number | null
+          warmup_started_at: string | null
+          warmup_status: string | null
         }
         Insert: {
           created_at?: string | null
@@ -40,6 +43,9 @@ export type Database = {
           session_data?: string | null
           updated_at?: string | null
           username: string
+          warmup_day?: number | null
+          warmup_started_at?: string | null
+          warmup_status?: string | null
         }
         Update: {
           created_at?: string | null
@@ -53,6 +59,9 @@ export type Database = {
           session_data?: string | null
           updated_at?: string | null
           username?: string
+          warmup_day?: number | null
+          warmup_started_at?: string | null
+          warmup_status?: string | null
         }
         Relationships: []
       }

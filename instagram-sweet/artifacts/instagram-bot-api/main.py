@@ -20,6 +20,7 @@ import db_proxy
 from instagram_client import set_global_proxy, account_manager
 from auth_middleware import AuthMiddleware
 from routers import auth, account, dm, comments, posts, queue, logs, settings
+from routers.warmup import router as warmup_router
 from routers.ws import router as ws_router
 
 ALLOWED_ORIGINS = [
@@ -59,10 +60,13 @@ async def lifespan(app: FastAPI):
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from scheduler import process_scheduled_posts
+        from warmup import run_warmup_cycle
         sched = AsyncIOScheduler()
         sched.add_job(process_scheduled_posts, "interval", seconds=60, id="post_scheduler")
+        # Warmup cycle every 45 min (randomized in engine)
+        sched.add_job(run_warmup_cycle, "interval", minutes=45, id="warmup_cycle")
         sched.start()
-        logger.info("[SCHEDULER] Post scheduler started (every 60s)")
+        logger.info("[SCHEDULER] Post scheduler + warmup cycle started")
     except Exception as e:
         logger.error(f"[SCHEDULER] Failed to start: {e}")
 
@@ -114,6 +118,7 @@ app.include_router(posts.router, prefix="/bot-api/posts", tags=["posts"])
 app.include_router(queue.router, prefix="/bot-api/queue", tags=["queue"])
 app.include_router(logs.router, prefix="/bot-api/logs", tags=["logs"])
 app.include_router(settings.router, prefix="/bot-api/settings", tags=["settings"])
+app.include_router(warmup_router, prefix="/bot-api/warmup", tags=["warmup"])
 
 # WebSocket routes
 app.include_router(ws_router, prefix="/bot-api", tags=["websocket"])
